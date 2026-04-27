@@ -22,8 +22,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           {userId && <Nav />}
           <main className="container py-8">{children}</main>
           <footer className="border-t mt-16 py-4">
-            <div className="container text-xs text-muted-foreground">
+            <div className="container text-xs text-muted-foreground flex gap-4">
               <a href="/privacy" className="hover:underline">Privacy Policy</a>
+              <a href="/data-retention" className="hover:underline">Data Retention Policy</a>
             </div>
           </footer>
         </body>
