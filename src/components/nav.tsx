@@ -1,0 +1,43 @@
+'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { UserButton } from '@clerk/nextjs';
+import { cn } from '@/lib/utils';
+import { CreditCard, LayoutDashboard, Link2, RefreshCw, TrendingDown } from 'lucide-react';
+
+const links = [
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/accounts', label: 'Accounts', icon: CreditCard },
+  { href: '/connect', label: 'Connect', icon: Link2 },
+  { href: '/sync', label: 'Sync', icon: RefreshCw },
+  { href: '/scenarios', label: 'Scenarios', icon: TrendingDown },
+];
+
+export function Nav() {
+  const pathname = usePathname();
+
+  return (
+    <nav className="border-b bg-background">
+      <div className="container flex h-14 items-center justify-between">
+        <div className="flex items-center gap-1">
+          <span className="mr-4 font-semibold text-sm">Debt Tracker</span>
+          {links.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground',
+                pathname === href ? 'bg-accent text-accent-foreground' : 'text-muted-foreground',
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </Link>
+          ))}
+        </div>
+        <UserButton />
+      </div>
+    </nav>
+  );
+}
