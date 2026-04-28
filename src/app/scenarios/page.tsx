@@ -9,7 +9,7 @@ export default async function ScenariosPage() {
   const today = new Date().toISOString().slice(0, 10);
   const userFilter = or(eq(plaidItems.userId, userId!), eq(mxMembers.userId, userId!));
 
-  const [creditRows, purchaseAprs, overrides] = await Promise.all([
+  const [creditRows, purchaseAprs, specialAprs, overrides] = await Promise.all([
     db
       .select({
         accountId: accounts.accountId,
@@ -31,6 +31,19 @@ export default async function ScenariosPage() {
       .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
       .where(and(eq(aprs.aprType, 'purchase_apr'), userFilter)),
 
+    // Special/promo APRs — balance_subject_to_apr is the promotional balance
+    db
+      .select({
+        accountId: aprs.accountId,
+        aprPercentage: aprs.aprPercentage,
+        balanceSubjectToApr: aprs.balanceSubjectToApr,
+      })
+      .from(aprs)
+      .innerJoin(accounts, eq(accounts.accountId, aprs.accountId))
+      .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
+      .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
+      .where(and(eq(aprs.aprType, 'special'), userFilter)),
+
     db
       .select({
         accountId: manualOverrides.accountId,
@@ -48,6 +61,8 @@ export default async function ScenariosPage() {
   ]);
 
   const aprMap = new Map(purchaseAprs.map((a) => [a.accountId, parseFloat(a.apr ?? '0')]));
+  // Use the most recent special APR per account (take first if multiple)
+  const specialAprMap = new Map(specialAprs.map((a) => [a.accountId, a]));
   const overrideMap = new Map(overrides.map((o) => [o.accountId, o]));
 
   const scenarioAccounts: ScenarioAccount[] = creditRows
@@ -56,15 +71,21 @@ export default async function ScenariosPage() {
       const minPayment = parseFloat(row.minPayment ?? '0') || Math.max(25, balance * 0.02);
       const purchaseAprPct = aprMap.get(row.accountId) ?? 0;
       const override = overrideMap.get(row.accountId);
+      const specialApr = specialAprMap.get(row.accountId);
+
+      // Promo APR: manual override takes precedence, else use Plaid special APR
+      const promoAprPct = override?.promoApr != null
+        ? parseFloat(override.promoApr)
+        : specialApr?.aprPercentage != null
+          ? parseFloat(specialApr.aprPercentage)
+          : null;
 
       const promoActive =
-        override?.promoApr != null &&
-        override.promoExpiration != null &&
+        promoAprPct != null &&
+        override?.promoExpiration != null &&
         override.promoExpiration >= today;
 
-      const effectiveAprPct = promoActive
-        ? parseFloat(override!.promoApr ?? '0')
-        : purchaseAprPct;
+      const effectiveAprPct = promoActive ? promoAprPct! : purchaseAprPct;
 
       const promoExpiresMonths =
         promoActive && override!.promoExpiration
@@ -77,6 +98,15 @@ export default async function ScenariosPage() {
             )
           : undefined;
 
+      // Promo balance: manual override > Plaid balance_subject_to_apr > total balance
+      const promoBalance = promoActive
+        ? (override?.promoBalance
+            ? parseFloat(override.promoBalance)
+            : specialApr?.balanceSubjectToApr
+              ? parseFloat(specialApr.balanceSubjectToApr)
+              : undefined)
+        : undefined;
+
       return {
         accountId: row.accountId,
         name: row.name,
@@ -86,8 +116,10 @@ export default async function ScenariosPage() {
         postPromoApr: promoActive ? purchaseAprPct / 100 : undefined,
         promoExpiresMonths,
         isDeferredInterest: promoActive ? (override?.isDeferredInterest ?? false) : false,
-        promoBalance: promoActive && override?.promoBalance ? parseFloat(override.promoBalance) : undefined,
-        accruedDeferredInterest: promoActive && override?.accruedDeferredInterest ? parseFloat(override.accruedDeferredInterest) : undefined,
+        promoBalance,
+        accruedDeferredInterest: promoActive && override?.accruedDeferredInterest
+          ? parseFloat(override.accruedDeferredInterest)
+          : undefined,
       };
     })
     .filter((a) => a.balance > 0.01)

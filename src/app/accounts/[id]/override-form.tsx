@@ -20,7 +20,7 @@ export function OverrideForm({ accountId, initial }: { accountId: string; initia
   const [promoExpirationDate, setPromoExpirationDate] = useState(initial?.promoExpirationDate ?? '');
   const [isDeferredInterest, setIsDeferredInterest] = useState(initial?.isDeferredInterest ?? false);
   const [promoAprPercentage, setPromoAprPercentage] = useState(initial?.promoAprPercentage ?? '');
-  const [promoBalance, setPromoBalance] = useState(initial?.promoBalance ?? '');
+  const [promoBalance] = useState(initial?.promoBalance ?? '');
   const [accruedDeferredInterest, setAccruedDeferredInterest] = useState(initial?.accruedDeferredInterest ?? '');
   const [notes, setNotes] = useState(initial?.notes ?? '');
   const [saving, setSaving] = useState(false);
@@ -98,26 +98,8 @@ export function OverrideForm({ accountId, initial }: { accountId: string; initia
       </div>
 
       {isDeferredInterest && (
-        <div className="grid gap-4 sm:grid-cols-2 pl-6 border-l-2 border-amber-200">
-          <div className="space-y-2">
-            <Label htmlFor="promoBalance">Promo Balance ($)</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-              <Input
-                id="promoBalance"
-                type="number"
-                step="0.01"
-                min="0"
-                value={promoBalance}
-                onChange={(e) => setPromoBalance(e.target.value)}
-                placeholder="Amount under promo rate"
-                className="pl-7"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">The specific balance that must be paid off by the deadline</p>
-
-          </div>
-          <div className="space-y-2">
+        <div className="space-y-4 pl-6 border-l-2 border-amber-200">
+          <div className="max-w-xs space-y-2">
             <Label htmlFor="accruedDeferred">Accrued Deferred Interest ($)</Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
@@ -128,11 +110,13 @@ export function OverrideForm({ accountId, initial }: { accountId: string; initia
                 min="0"
                 value={accruedDeferredInterest}
                 onChange={(e) => setAccruedDeferredInterest(e.target.value)}
-                placeholder="Interest at risk if deadline missed"
+                placeholder="From your statement"
                 className="pl-7"
               />
             </div>
-            <p className="text-xs text-muted-foreground">Retroactively charged if promo balance is not cleared in time</p>
+            <p className="text-xs text-muted-foreground">
+              Retroactively charged if promo balance is not cleared in time. The promo balance itself is pulled automatically from Plaid.
+            </p>
           </div>
         </div>
       )}

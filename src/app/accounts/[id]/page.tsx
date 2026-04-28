@@ -58,6 +58,7 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
 
   const { account, institution, liability, aprs: accountAprs, override } = data;
   const util = calcUtilization(account.currentBalance, account.creditLimit);
+  const specialApr = accountAprs.find((a) => a.aprType === 'special');
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -170,31 +171,38 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
             <CardTitle>Promotional Rate</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2 text-sm">
-            <Row
-              label="Promo APR"
-              value={override.promoAprPercentage ? formatPercent(parseFloat(override.promoAprPercentage)) : '—'}
-            />
-            <Row label="Expires" value={formatDate(override.promoExpirationDate)} />
-            <Row
-              label="Type"
-              value={override.isDeferredInterest ? 'Deferred interest' : 'Standard promo'}
-            />
             {(() => {
+              const promoAprPct = override.promoAprPercentage ?? specialApr?.aprPercentage;
+              // Promo balance: manual override → Plaid balance_subject_to_apr → null
+              const promoBalStr = override.promoBalance ?? specialApr?.balanceSubjectToApr;
+              const promoBalAmt = promoBalStr ? parseFloat(promoBalStr) : 0;
               const today = new Date();
               const expiry = new Date(override.promoExpirationDate!);
               const daysLeft = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
               const monthsLeft = Math.max(1, Math.round(daysLeft / 30.44));
-              const promoBalAmt = parseFloat(override.promoBalance ?? '0');
-              const requiredMonthly = promoBalAmt > 0 && monthsLeft > 0 ? promoBalAmt / monthsLeft : null;
+              const requiredMonthly = promoBalAmt > 0 ? promoBalAmt / monthsLeft : null;
+              const promoBalSource = override.promoBalance ? null : specialApr?.balanceSubjectToApr ? 'Plaid' : null;
               return (
                 <>
+                  <Row
+                    label="Promo APR"
+                    value={promoAprPct ? formatPercent(parseFloat(promoAprPct)) : '—'}
+                  />
+                  <Row label="Expires" value={formatDate(override.promoExpirationDate)} />
+                  <Row
+                    label="Type"
+                    value={override.isDeferredInterest ? 'Deferred interest' : 'Standard promo'}
+                  />
                   {daysLeft > 0 ? (
                     <Row label="Time remaining" value={`${daysLeft} day${daysLeft !== 1 ? 's' : ''}`} />
                   ) : (
                     <Row label="Status" value="Expired" />
                   )}
-                  {override.promoBalance && (
-                    <Row label="Promo balance" value={formatCurrency(override.promoBalance)} />
+                  {promoBalStr && (
+                    <Row
+                      label={`Promo balance${promoBalSource ? ` (from ${promoBalSource})` : ''}`}
+                      value={formatCurrency(promoBalStr)}
+                    />
                   )}
                   {override.accruedDeferredInterest && (
                     <Row label="Deferred interest at risk" value={formatCurrency(override.accruedDeferredInterest)} />
