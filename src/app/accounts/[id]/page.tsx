@@ -9,7 +9,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency, formatPercent, formatDate, calcUtilization } from '@/lib/utils';
-import { OverrideForm } from './override-form';
 import { ArrowLeft } from 'lucide-react';
 
 async function getAccount(accountId: string, userId: string) {
@@ -219,15 +218,6 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
           </CardContent>
         </Card>
       )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Manual Overrides</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <OverrideForm accountId={account.accountId} initial={override} />
-        </CardContent>
-      </Card>
 
       <p className="text-xs text-muted-foreground">
         Last synced: {account.lastSyncedAt ? formatDate(account.lastSyncedAt) : 'never'}
