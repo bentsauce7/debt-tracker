@@ -22,7 +22,7 @@ async function getDashboardMetrics() {
       .leftJoin(liabilities, eq(liabilities.accountId, accounts.accountId))
       .where(eq(accounts.type, 'credit')),
 
-    db.select().from(aprs).where(eq(aprs.aprType, 'purchase')),
+    db.select().from(aprs).where(eq(aprs.aprType, 'purchase_apr')),
 
     db
       .select({ completedAt: syncLog.completedAt })

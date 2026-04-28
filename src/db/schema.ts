@@ -23,11 +23,22 @@ export const plaidItems = pgTable('plaid_items', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+export const mxMembers = pgTable('mx_members', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userGuid: text('user_guid').notNull(),
+  memberGuid: text('member_guid').notNull().unique(),
+  institutionCode: text('institution_code'),
+  institutionName: text('institution_name'),
+  connectionStatus: text('connection_status').notNull().default('CONNECTED'),
+  needsReauth: boolean('needs_reauth').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 export const accounts = pgTable('accounts', {
   id: uuid('id').primaryKey().defaultRandom(),
-  itemId: uuid('item_id')
-    .notNull()
-    .references(() => plaidItems.id, { onDelete: 'cascade' }),
+  itemId: uuid('item_id').references(() => plaidItems.id, { onDelete: 'cascade' }),
+  mxMemberId: uuid('mx_member_id').references(() => mxMembers.id, { onDelete: 'cascade' }),
   accountId: text('account_id').notNull().unique(),
   name: text('name').notNull(),
   mask: text('mask'),
@@ -93,8 +104,13 @@ export const plaidItemsRelations = relations(plaidItems, ({ many }) => ({
   accounts: many(accounts),
 }));
 
+export const mxMembersRelations = relations(mxMembers, ({ many }) => ({
+  accounts: many(accounts),
+}));
+
 export const accountsRelations = relations(accounts, ({ one, many }) => ({
   item: one(plaidItems, { fields: [accounts.itemId], references: [plaidItems.id] }),
+  mxMember: one(mxMembers, { fields: [accounts.mxMemberId], references: [mxMembers.id] }),
   liability: one(liabilities, { fields: [accounts.accountId], references: [liabilities.accountId] }),
   aprs: many(aprs),
   manualOverride: one(manualOverrides, {

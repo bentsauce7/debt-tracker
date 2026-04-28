@@ -22,6 +22,9 @@ type AccountRow = {
   minimumPaymentAmount: string | null;
   nextPaymentDueDate: string | null;
   purchaseApr: string | null;
+  promoExpirationDate: string | null;
+  promoAprPercentage: string | null;
+  isDeferredInterest: boolean | null;
 };
 
 type SortKey = 'name' | 'balance' | 'utilization' | 'apr' | 'minPayment' | 'dueDate';
@@ -124,7 +127,13 @@ export function AccountsTable({ rows }: { rows: AccountRow[] }) {
                   {isPastDue && <Badge variant="destructive">Past Due</Badge>}
                   {isOverLimit && <Badge variant="destructive">Over Limit</Badge>}
                   {row.isOverdue && !isPastDue && <Badge variant="warning">Overdue</Badge>}
-                  {!isPastDue && !isOverLimit && !row.isOverdue && (
+                  {row.promoExpirationDate && row.promoExpirationDate >= today && (
+                    <Badge variant="secondary">
+                      {row.isDeferredInterest ? 'Deferred' : 'Promo'}
+                    </Badge>
+                  )}
+                  {!isPastDue && !isOverLimit && !row.isOverdue &&
+                    !(row.promoExpirationDate && row.promoExpirationDate >= today) && (
                     <Badge variant="success">OK</Badge>
                   )}
                 </div>

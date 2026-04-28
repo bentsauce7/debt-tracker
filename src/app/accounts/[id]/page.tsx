@@ -37,9 +37,9 @@ async function getAccount(accountId: string) {
 }
 
 const APR_TYPE_LABELS: Record<string, string> = {
-  purchase: 'Purchase',
-  balance_transfer: 'Balance Transfer',
-  cash_advance: 'Cash Advance',
+  purchase_apr: 'Purchase',
+  balance_transfer_apr: 'Balance Transfer',
+  cash_apr: 'Cash Advance',
   special: 'Special / Promo',
 };
 
@@ -153,6 +153,35 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
                 <Separator className="mt-3" />
               </div>
             ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {override && override.promoExpirationDate && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Promotional Rate</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2 text-sm">
+            <Row
+              label="Promo APR"
+              value={override.promoAprPercentage ? formatPercent(parseFloat(override.promoAprPercentage)) : '—'}
+            />
+            <Row label="Expires" value={formatDate(override.promoExpirationDate)} />
+            <Row
+              label="Type"
+              value={override.isDeferredInterest ? 'Deferred interest — unpaid balance accrues hidden interest' : 'Standard promo — no interest if paid by expiry'}
+            />
+            {(() => {
+              const today = new Date();
+              const expiry = new Date(override.promoExpirationDate!);
+              const daysLeft = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+              return daysLeft > 0 ? (
+                <Row label="Time remaining" value={`${daysLeft} day${daysLeft !== 1 ? 's' : ''}`} />
+              ) : (
+                <Row label="Status" value="Expired" />
+              );
+            })()}
           </CardContent>
         </Card>
       )}

@@ -52,26 +52,26 @@ export async function POST() {
               itemId: item.id,
               accountId: acct.account_id,
               name: acct.name,
-              mask: acct.mask ?? null,
-              officialName: acct.official_name ?? null,
+              mask: acct.mask ?? undefined,
+              officialName: acct.official_name ?? undefined,
               type: acct.type,
-              subtype: acct.subtype ?? null,
-              currentBalance: acct.balances.current?.toString() ?? null,
-              availableBalance: acct.balances.available?.toString() ?? null,
-              creditLimit: acct.balances.limit?.toString() ?? null,
+              subtype: acct.subtype ?? undefined,
+              currentBalance: acct.balances.current?.toString() ?? undefined,
+              availableBalance: acct.balances.available?.toString() ?? undefined,
+              creditLimit: acct.balances.limit?.toString() ?? undefined,
               lastSyncedAt: new Date(),
             })
             .onConflictDoUpdate({
               target: accounts.accountId,
               set: {
                 name: acct.name,
-                mask: acct.mask ?? null,
-                officialName: acct.official_name ?? null,
+                mask: acct.mask ?? undefined,
+                officialName: acct.official_name ?? undefined,
                 type: acct.type,
-                subtype: acct.subtype ?? null,
-                currentBalance: acct.balances.current?.toString() ?? null,
-                availableBalance: acct.balances.available?.toString() ?? null,
-                creditLimit: acct.balances.limit?.toString() ?? null,
+                subtype: acct.subtype ?? undefined,
+                currentBalance: acct.balances.current?.toString() ?? undefined,
+                availableBalance: acct.balances.available?.toString() ?? undefined,
+                creditLimit: acct.balances.limit?.toString() ?? undefined,
                 lastSyncedAt: new Date(),
               },
             });
@@ -79,44 +79,46 @@ export async function POST() {
         }
 
         for (const credit of creditLiabilities) {
+          if (!credit.account_id) continue;
+          const accountId = credit.account_id;
           await db
             .insert(liabilities)
             .values({
-              accountId: credit.account_id,
-              lastStatementBalance: credit.last_statement_balance?.toString() ?? null,
-              lastStatementIssueDate: credit.last_statement_issue_date ?? null,
-              minimumPaymentAmount: credit.minimum_payment_amount?.toString() ?? null,
-              nextPaymentDueDate: credit.next_payment_due_date ?? null,
-              lastPaymentAmount: credit.last_payment_amount?.toString() ?? null,
-              lastPaymentDate: credit.last_payment_date ?? null,
+              accountId,
+              lastStatementBalance: credit.last_statement_balance?.toString() ?? undefined,
+              lastStatementIssueDate: credit.last_statement_issue_date ?? undefined,
+              minimumPaymentAmount: credit.minimum_payment_amount?.toString() ?? undefined,
+              nextPaymentDueDate: credit.next_payment_due_date ?? undefined,
+              lastPaymentAmount: credit.last_payment_amount?.toString() ?? undefined,
+              lastPaymentDate: credit.last_payment_date ?? undefined,
             })
             .onConflictDoUpdate({
               target: liabilities.accountId,
               set: {
-                lastStatementBalance: credit.last_statement_balance?.toString() ?? null,
-                lastStatementIssueDate: credit.last_statement_issue_date ?? null,
-                minimumPaymentAmount: credit.minimum_payment_amount?.toString() ?? null,
-                nextPaymentDueDate: credit.next_payment_due_date ?? null,
-                lastPaymentAmount: credit.last_payment_amount?.toString() ?? null,
-                lastPaymentDate: credit.last_payment_date ?? null,
+                lastStatementBalance: credit.last_statement_balance?.toString() ?? undefined,
+                lastStatementIssueDate: credit.last_statement_issue_date ?? undefined,
+                minimumPaymentAmount: credit.minimum_payment_amount?.toString() ?? undefined,
+                nextPaymentDueDate: credit.next_payment_due_date ?? undefined,
+                lastPaymentAmount: credit.last_payment_amount?.toString() ?? undefined,
+                lastPaymentDate: credit.last_payment_date ?? undefined,
               },
             });
 
           await db
             .update(accounts)
             .set({ isOverdue: credit.is_overdue ?? false })
-            .where(eq(accounts.accountId, credit.account_id));
+            .where(eq(accounts.accountId, accountId));
 
-          await db.delete(aprs).where(eq(aprs.accountId, credit.account_id));
+          await db.delete(aprs).where(eq(aprs.accountId, accountId));
 
           if (credit.aprs && credit.aprs.length > 0) {
             await db.insert(aprs).values(
               credit.aprs.map((apr) => ({
-                accountId: credit.account_id,
-                aprPercentage: apr.apr_percentage?.toString() ?? null,
+                accountId: accountId,
+                aprPercentage: apr.apr_percentage?.toString() ?? undefined,
                 aprType: apr.apr_type,
-                balanceSubjectToApr: apr.balance_subject_to_apr?.toString() ?? null,
-                interestChargeAmount: apr.interest_charge_amount?.toString() ?? null,
+                balanceSubjectToApr: apr.balance_subject_to_apr?.toString() ?? undefined,
+                interestChargeAmount: apr.interest_charge_amount?.toString() ?? undefined,
               })),
             );
           }

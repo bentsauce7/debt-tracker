@@ -1,6 +1,6 @@
 import { eq, desc } from 'drizzle-orm';
 import { db } from '@/db';
-import { accounts, liabilities, aprs, plaidItems } from '@/db/schema';
+import { accounts, liabilities, aprs, plaidItems, manualOverrides } from '@/db/schema';
 import { AccountsTable } from '@/components/accounts-table';
 
 async function getAccounts() {
@@ -19,13 +19,17 @@ async function getAccounts() {
         institutionName: plaidItems.institutionName,
         minimumPaymentAmount: liabilities.minimumPaymentAmount,
         nextPaymentDueDate: liabilities.nextPaymentDueDate,
+        promoExpirationDate: manualOverrides.promoExpirationDate,
+        promoAprPercentage: manualOverrides.promoAprPercentage,
+        isDeferredInterest: manualOverrides.isDeferredInterest,
       })
       .from(accounts)
       .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
       .leftJoin(liabilities, eq(liabilities.accountId, accounts.accountId))
+      .leftJoin(manualOverrides, eq(manualOverrides.accountId, accounts.accountId))
       .orderBy(desc(accounts.currentBalance)),
 
-    db.select().from(aprs).where(eq(aprs.aprType, 'purchase')),
+    db.select().from(aprs).where(eq(aprs.aprType, 'purchase_apr')),
   ]);
 
   const aprMap = new Map(purchaseAprs.map((a) => [a.accountId, a.aprPercentage]));

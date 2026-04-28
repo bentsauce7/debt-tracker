@@ -7,6 +7,7 @@ import { RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
 
 type SyncResult = {
   itemsSynced: number;
+  membersSynced: number;
   accountsUpdated: number;
   errors: string[];
 };
@@ -22,10 +23,22 @@ export function SyncButton() {
     setResult(null);
     setError(null);
     try {
-      const res = await fetch('/api/plaid/sync', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Sync failed');
-      setResult(data);
+      const [plaidRes, mxRes] = await Promise.all([
+        fetch('/api/plaid/sync', { method: 'POST' }),
+        fetch('/api/mx/sync', { method: 'POST' }),
+      ]);
+
+      const [plaid, mx] = await Promise.all([plaidRes.json(), mxRes.json()]);
+
+      if (!plaidRes.ok) throw new Error(plaid.error ?? 'Plaid sync failed');
+      if (!mxRes.ok) throw new Error(mx.error ?? 'MX sync failed');
+
+      setResult({
+        itemsSynced: plaid.itemsSynced ?? 0,
+        membersSynced: mx.membersSynced ?? 0,
+        accountsUpdated: (plaid.accountsUpdated ?? 0) + (mx.accountsUpdated ?? 0),
+        errors: [...(plaid.errors ?? []), ...(mx.errors ?? [])],
+      });
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sync failed');
@@ -48,7 +61,8 @@ export function SyncButton() {
             Sync complete
           </div>
           <p className="text-sm text-muted-foreground">
-            {result.itemsSynced} institution{result.itemsSynced !== 1 ? 's' : ''} synced,{' '}
+            {result.itemsSynced} Plaid institution{result.itemsSynced !== 1 ? 's' : ''} ·{' '}
+            {result.membersSynced} MX institution{result.membersSynced !== 1 ? 's' : ''} ·{' '}
             {result.accountsUpdated} account{result.accountsUpdated !== 1 ? 's' : ''} updated.
           </p>
           {result.errors.length > 0 && (
