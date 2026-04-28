@@ -1,8 +1,9 @@
 import { notFound } from 'next/navigation';
 import { eq } from 'drizzle-orm';
 import Link from 'next/link';
+import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { accounts, liabilities, aprs, manualOverrides, plaidItems } from '@/db/schema';
+import { accounts, liabilities, aprs, manualOverrides, plaidItems, mxMembers } from '@/db/schema';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,15 +12,20 @@ import { formatCurrency, formatPercent, formatDate, calcUtilization } from '@/li
 import { OverrideForm } from './override-form';
 import { ArrowLeft } from 'lucide-react';
 
-async function getAccount(accountId: string) {
+async function getAccount(accountId: string, userId: string) {
   const [account] = await db
     .select()
     .from(accounts)
     .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
+    .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
     .where(eq(accounts.accountId, accountId))
     .limit(1);
 
   if (!account) return null;
+
+  // Verify the account belongs to the requesting user
+  const ownerUserId = account.plaid_items?.userId ?? account.mx_members?.userId;
+  if (ownerUserId !== userId) return null;
 
   const [liability, accountAprs, override] = await Promise.all([
     db.select().from(liabilities).where(eq(liabilities.accountId, accountId)).limit(1),
@@ -45,7 +51,8 @@ const APR_TYPE_LABELS: Record<string, string> = {
 
 export default async function AccountDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const data = await getAccount(id);
+  const { userId } = await auth();
+  const data = await getAccount(id, userId!);
 
   if (!data) notFound();
 

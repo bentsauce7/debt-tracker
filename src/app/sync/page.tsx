@@ -1,4 +1,5 @@
-import { desc } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
+import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
 import { syncLog, plaidItems, mxMembers } from '@/db/schema';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,10 +9,11 @@ import { formatDate } from '@/lib/utils';
 import { AlertTriangle } from 'lucide-react';
 
 export default async function SyncPage() {
+  const { userId } = await auth();
   const [logs, plaid, mx] = await Promise.all([
     db.select().from(syncLog).orderBy(desc(syncLog.startedAt)).limit(10),
-    db.select().from(plaidItems),
-    db.select().from(mxMembers),
+    db.select().from(plaidItems).where(eq(plaidItems.userId, userId!)),
+    db.select().from(mxMembers).where(eq(mxMembers.userId, userId!)),
   ]);
 
   const reauthPlaid = plaid.filter((i) => i.needsReauth);

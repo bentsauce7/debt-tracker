@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 import { plaidClient } from '@/lib/plaid';
 import { Products, CountryCode } from 'plaid';
 
 export async function POST() {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   try {
     const { data } = await plaidClient.linkTokenCreate({
-      user: { client_user_id: 'shared-household' },
+      user: { client_user_id: userId },
       client_name: 'Debt Tracker',
       products: [Products.Liabilities],
       country_codes: [CountryCode.Us],

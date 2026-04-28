@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 import { plaidClient } from '@/lib/plaid';
 import { encrypt } from '@/lib/crypto';
 import { db } from '@/db';
 import { plaidItems } from '@/db/schema';
 
 export async function POST(request: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   try {
     const { public_token, institution } = await request.json();
 
@@ -19,6 +23,7 @@ export async function POST(request: NextRequest) {
     await db
       .insert(plaidItems)
       .values({
+        userId,
         itemId: data.item_id,
         accessToken: encryptedToken,
         institutionName: institution?.name ?? null,
@@ -27,6 +32,7 @@ export async function POST(request: NextRequest) {
       .onConflictDoUpdate({
         target: plaidItems.itemId,
         set: {
+          userId,
           accessToken: encryptedToken,
           institutionName: institution?.name ?? null,
           institutionId: institution?.institution_id ?? null,

@@ -13,6 +13,7 @@ import { relations } from 'drizzle-orm';
 
 export const plaidItems = pgTable('plaid_items', {
   id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id'),
   itemId: text('item_id').notNull().unique(),
   accessToken: text('access_token').notNull(),
   institutionName: text('institution_name'),
@@ -25,6 +26,7 @@ export const plaidItems = pgTable('plaid_items', {
 
 export const mxMembers = pgTable('mx_members', {
   id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id'),
   userGuid: text('user_guid').notNull(),
   memberGuid: text('member_guid').notNull().unique(),
   institutionCode: text('institution_code'),

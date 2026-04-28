@@ -1,5 +1,6 @@
 import { Products, CountryCode } from 'plaid';
 import { eq, count } from 'drizzle-orm';
+import { auth } from '@clerk/nextjs/server';
 import { plaidClient } from '@/lib/plaid';
 import { db } from '@/db';
 import { plaidItems, mxMembers, accounts } from '@/db/schema';
@@ -25,10 +26,10 @@ async function getLinkToken(): Promise<string | null> {
   }
 }
 
-async function getConnectedItems() {
+async function getConnectedItems(userId: string) {
   const [plaidRows, mxRows, plaidCounts, mxCounts] = await Promise.all([
-    db.select().from(plaidItems).orderBy(plaidItems.createdAt),
-    db.select().from(mxMembers).orderBy(mxMembers.createdAt),
+    db.select().from(plaidItems).where(eq(plaidItems.userId, userId)).orderBy(plaidItems.createdAt),
+    db.select().from(mxMembers).where(eq(mxMembers.userId, userId)).orderBy(mxMembers.createdAt),
     db
       .select({ itemId: accounts.itemId, count: count() })
       .from(accounts)
@@ -56,7 +57,8 @@ export default async function ConnectPage({
   searchParams: Promise<{ oauth_state_id?: string }>;
 }) {
   const params = await searchParams;
-  const [linkToken, { plaid, mx }] = await Promise.all([getLinkToken(), getConnectedItems()]);
+  const { userId } = await auth();
+  const [linkToken, { plaid, mx }] = await Promise.all([getLinkToken(), getConnectedItems(userId!)]);
 
   const receivedRedirectUri =
     params.oauth_state_id && process.env.PLAID_OAUTH_REDIRECT_URI

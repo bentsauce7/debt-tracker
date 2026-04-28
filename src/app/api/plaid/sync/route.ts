@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
+import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
 import { plaidItems, accounts, liabilities, aprs, syncLog } from '@/db/schema';
 import { plaidClient } from '@/lib/plaid';
@@ -16,6 +17,9 @@ function isPlaidLoginError(err: unknown): boolean {
 }
 
 export async function POST() {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const [logRow] = await db
     .insert(syncLog)
     .values({ status: 'running' })
@@ -30,7 +34,7 @@ export async function POST() {
     const items = await db
       .select()
       .from(plaidItems)
-      .where(eq(plaidItems.needsReauth, false));
+      .where(and(eq(plaidItems.userId, userId), eq(plaidItems.needsReauth, false)));
 
     for (const item of items) {
       const label = item.institutionName ?? item.itemId;

@@ -1,10 +1,13 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, or } from 'drizzle-orm';
+import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { accounts, liabilities, aprs, manualOverrides } from '@/db/schema';
+import { accounts, liabilities, aprs, manualOverrides, plaidItems, mxMembers } from '@/db/schema';
 import { ScenarioCalculator, type ScenarioAccount } from '@/components/scenario-calculator';
 
 export default async function ScenariosPage() {
+  const { userId } = await auth();
   const today = new Date().toISOString().slice(0, 10);
+  const userFilter = or(eq(plaidItems.userId, userId!), eq(mxMembers.userId, userId!));
 
   const [creditRows, purchaseAprs, overrides] = await Promise.all([
     db
@@ -15,13 +18,18 @@ export default async function ScenariosPage() {
         minPayment: liabilities.minimumPaymentAmount,
       })
       .from(accounts)
+      .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
+      .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
       .leftJoin(liabilities, eq(liabilities.accountId, accounts.accountId))
-      .where(eq(accounts.type, 'credit')),
+      .where(and(eq(accounts.type, 'credit'), userFilter)),
 
     db
       .select({ accountId: aprs.accountId, apr: aprs.aprPercentage })
       .from(aprs)
-      .where(eq(aprs.aprType, 'purchase_apr')),
+      .innerJoin(accounts, eq(accounts.accountId, aprs.accountId))
+      .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
+      .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
+      .where(and(eq(aprs.aprType, 'purchase_apr'), userFilter)),
 
     db
       .select({
@@ -30,7 +38,11 @@ export default async function ScenariosPage() {
         promoExpiration: manualOverrides.promoExpirationDate,
         isDeferredInterest: manualOverrides.isDeferredInterest,
       })
-      .from(manualOverrides),
+      .from(manualOverrides)
+      .innerJoin(accounts, eq(accounts.accountId, manualOverrides.accountId))
+      .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
+      .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
+      .where(userFilter),
   ]);
 
   const aprMap = new Map(purchaseAprs.map((a) => [a.accountId, parseFloat(a.apr ?? '0')]));

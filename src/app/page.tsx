@@ -1,13 +1,14 @@
 import Link from 'next/link';
-import { eq, desc } from 'drizzle-orm';
+import { and, eq, desc, or } from 'drizzle-orm';
+import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { accounts, liabilities, aprs, syncLog } from '@/db/schema';
+import { accounts, liabilities, aprs, syncLog, plaidItems, mxMembers } from '@/db/schema';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, formatPercent, formatDate } from '@/lib/utils';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
-async function getDashboardMetrics() {
+async function getDashboardMetrics(userId: string) {
   const [creditRows, purchaseAprs, lastSync] = await Promise.all([
     db
       .select({
@@ -19,10 +20,18 @@ async function getDashboardMetrics() {
         nextPaymentDueDate: liabilities.nextPaymentDueDate,
       })
       .from(accounts)
+      .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
+      .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
       .leftJoin(liabilities, eq(liabilities.accountId, accounts.accountId))
-      .where(eq(accounts.type, 'credit')),
+      .where(and(eq(accounts.type, 'credit'), or(eq(plaidItems.userId, userId), eq(mxMembers.userId, userId)))),
 
-    db.select().from(aprs).where(eq(aprs.aprType, 'purchase_apr')),
+    db
+      .select({ accountId: aprs.accountId, aprPercentage: aprs.aprPercentage })
+      .from(aprs)
+      .innerJoin(accounts, eq(accounts.accountId, aprs.accountId))
+      .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
+      .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
+      .where(and(eq(aprs.aprType, 'purchase_apr'), or(eq(plaidItems.userId, userId), eq(mxMembers.userId, userId)))),
 
     db
       .select({ completedAt: syncLog.completedAt })
@@ -75,7 +84,8 @@ async function getDashboardMetrics() {
 }
 
 export default async function DashboardPage() {
-  const data = await getDashboardMetrics();
+  const { userId } = await auth();
+  const data = await getDashboardMetrics(userId!);
   const hasFlags = data.pastDueCount > 0 || data.overLimitCount > 0;
 
   return (
