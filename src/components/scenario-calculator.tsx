@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatCurrency, formatPercent } from '@/lib/utils';
-import { TrendingDown, AlertCircle, AlertTriangle } from 'lucide-react';
+import { TrendingDown, AlertCircle, AlertTriangle, Clock } from 'lucide-react';
 
 export type ScenarioAccount = {
   accountId: string;
@@ -16,6 +16,8 @@ export type ScenarioAccount = {
   postPromoApr?: number;    // purchase APR to switch to after promo expires
   promoExpiresMonths?: number; // months until promo expires (0 = this month)
   isDeferredInterest?: boolean;
+  promoBalance?: number;    // specific balance that must be cleared by deadline
+  accruedDeferredInterest?: number; // interest at risk if deadline missed
 };
 
 type AccountResult = {
@@ -265,6 +267,8 @@ export function ScenarioCalculator({ accounts }: { accounts: ScenarioAccount[] }
   const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
   const totalMinPayments = accounts.reduce((s, a) => s + a.minPayment, 0);
   const promoAccounts = accounts.filter((a) => a.promoExpiresMonths !== undefined);
+  const deferredAccounts = promoAccounts.filter((a) => a.isDeferredInterest);
+  const totalDeferredAtRisk = deferredAccounts.reduce((s, a) => s + (a.accruedDeferredInterest ?? 0), 0);
 
   return (
     <div className="space-y-8">
@@ -287,6 +291,68 @@ export function ScenarioCalculator({ accounts }: { accounts: ScenarioAccount[] }
           </div>
         )}
       </div>
+
+      {/* Promo Deadlines panel */}
+      {deferredAccounts.length > 0 && (
+        <Card className="border-amber-200 bg-amber-50/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base text-amber-800">
+              <Clock className="h-4 w-4" />
+              Promo Deadlines
+              {totalDeferredAtRisk > 0 && (
+                <span className="ml-auto text-sm font-normal text-amber-700">
+                  {formatCurrency(totalDeferredAtRisk)} total at risk
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-amber-700 border-b border-amber-200">
+                  <th className="text-left pb-2 font-medium">Account</th>
+                  <th className="text-right pb-2 font-medium">Promo balance</th>
+                  <th className="text-right pb-2 font-medium">Interest at risk</th>
+                  <th className="text-right pb-2 font-medium">Deadline</th>
+                  <th className="text-right pb-2 font-medium">Need/mo</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-amber-100">
+                {[...deferredAccounts]
+                  .sort((a, b) => (a.promoExpiresMonths ?? 999) - (b.promoExpiresMonths ?? 999))
+                  .map((acct) => {
+                    const months = acct.promoExpiresMonths ?? 0;
+                    const promoAmt = acct.promoBalance ?? acct.balance;
+                    const required = months > 0 ? promoAmt / months : promoAmt;
+                    const urgent = months <= 2;
+                    return (
+                      <tr key={acct.accountId} className={urgent ? 'text-red-700' : 'text-amber-900'}>
+                        <td className="py-2 font-medium">{acct.name}</td>
+                        <td className="py-2 text-right font-mono">{formatCurrency(promoAmt)}</td>
+                        <td className="py-2 text-right font-mono">
+                          {acct.accruedDeferredInterest ? formatCurrency(acct.accruedDeferredInterest) : '—'}
+                        </td>
+                        <td className="py-2 text-right">
+                          {months === 0 ? (
+                            <span className="font-semibold">This month</span>
+                          ) : (
+                            `${months}mo`
+                          )}
+                        </td>
+                        <td className="py-2 text-right font-mono font-semibold">
+                          {formatCurrency(required)}/mo
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+            <p className="text-xs text-amber-700 mt-3">
+              These accounts are excluded from the interest simulation below — they accrue no interest during the promo period. Pay at least the required monthly amount on each to avoid the deferred interest charge.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Extra payment input */}
       <div className="max-w-xs space-y-2">

@@ -37,6 +37,8 @@ export default async function ScenariosPage() {
         promoApr: manualOverrides.promoAprPercentage,
         promoExpiration: manualOverrides.promoExpirationDate,
         isDeferredInterest: manualOverrides.isDeferredInterest,
+        promoBalance: manualOverrides.promoBalance,
+        accruedDeferredInterest: manualOverrides.accruedDeferredInterest,
       })
       .from(manualOverrides)
       .innerJoin(accounts, eq(accounts.accountId, manualOverrides.accountId))
@@ -84,6 +86,8 @@ export default async function ScenariosPage() {
         postPromoApr: promoActive ? purchaseAprPct / 100 : undefined,
         promoExpiresMonths,
         isDeferredInterest: promoActive ? (override?.isDeferredInterest ?? false) : false,
+        promoBalance: promoActive && override?.promoBalance ? parseFloat(override.promoBalance) : undefined,
+        accruedDeferredInterest: promoActive && override?.accruedDeferredInterest ? parseFloat(override.accruedDeferredInterest) : undefined,
       };
     })
     .filter((a) => a.balance > 0.01)

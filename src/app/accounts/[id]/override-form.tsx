@@ -11,6 +11,8 @@ type Override = {
   promoExpirationDate: string | null;
   isDeferredInterest: boolean | null;
   promoAprPercentage: string | null;
+  promoBalance: string | null;
+  accruedDeferredInterest: string | null;
   notes: string | null;
 };
 
@@ -18,6 +20,8 @@ export function OverrideForm({ accountId, initial }: { accountId: string; initia
   const [promoExpirationDate, setPromoExpirationDate] = useState(initial?.promoExpirationDate ?? '');
   const [isDeferredInterest, setIsDeferredInterest] = useState(initial?.isDeferredInterest ?? false);
   const [promoAprPercentage, setPromoAprPercentage] = useState(initial?.promoAprPercentage ?? '');
+  const [promoBalance, setPromoBalance] = useState(initial?.promoBalance ?? '');
+  const [accruedDeferredInterest, setAccruedDeferredInterest] = useState(initial?.accruedDeferredInterest ?? '');
   const [notes, setNotes] = useState(initial?.notes ?? '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -37,6 +41,8 @@ export function OverrideForm({ accountId, initial }: { accountId: string; initia
           promoExpirationDate: promoExpirationDate || null,
           isDeferredInterest,
           promoAprPercentage: promoAprPercentage ? parseFloat(promoAprPercentage) : null,
+          promoBalance: promoBalance ? parseFloat(promoBalance) : null,
+          accruedDeferredInterest: accruedDeferredInterest ? parseFloat(accruedDeferredInterest) : null,
           notes: notes || null,
         }),
       });
@@ -90,6 +96,46 @@ export function OverrideForm({ accountId, initial }: { accountId: string; initia
           Deferred interest (interest accrues but is waived if paid off by promo end)
         </Label>
       </div>
+
+      {isDeferredInterest && (
+        <div className="grid gap-4 sm:grid-cols-2 pl-6 border-l-2 border-amber-200">
+          <div className="space-y-2">
+            <Label htmlFor="promoBalance">Promo Balance ($)</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+              <Input
+                id="promoBalance"
+                type="number"
+                step="0.01"
+                min="0"
+                value={promoBalance}
+                onChange={(e) => setPromoBalance(e.target.value)}
+                placeholder="Amount under promo rate"
+                className="pl-7"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">The specific balance that must be paid off by the deadline</p>
+
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="accruedDeferred">Accrued Deferred Interest ($)</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+              <Input
+                id="accruedDeferred"
+                type="number"
+                step="0.01"
+                min="0"
+                value={accruedDeferredInterest}
+                onChange={(e) => setAccruedDeferredInterest(e.target.value)}
+                placeholder="Interest at risk if deadline missed"
+                className="pl-7"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">Retroactively charged if promo balance is not cleared in time</p>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="notes">Notes</Label>

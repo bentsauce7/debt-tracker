@@ -177,16 +177,35 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
             <Row label="Expires" value={formatDate(override.promoExpirationDate)} />
             <Row
               label="Type"
-              value={override.isDeferredInterest ? 'Deferred interest — unpaid balance accrues hidden interest' : 'Standard promo — no interest if paid by expiry'}
+              value={override.isDeferredInterest ? 'Deferred interest' : 'Standard promo'}
             />
             {(() => {
               const today = new Date();
               const expiry = new Date(override.promoExpirationDate!);
               const daysLeft = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-              return daysLeft > 0 ? (
-                <Row label="Time remaining" value={`${daysLeft} day${daysLeft !== 1 ? 's' : ''}`} />
-              ) : (
-                <Row label="Status" value="Expired" />
+              const monthsLeft = Math.max(1, Math.round(daysLeft / 30.44));
+              const promoBalAmt = parseFloat(override.promoBalance ?? '0');
+              const requiredMonthly = promoBalAmt > 0 && monthsLeft > 0 ? promoBalAmt / monthsLeft : null;
+              return (
+                <>
+                  {daysLeft > 0 ? (
+                    <Row label="Time remaining" value={`${daysLeft} day${daysLeft !== 1 ? 's' : ''}`} />
+                  ) : (
+                    <Row label="Status" value="Expired" />
+                  )}
+                  {override.promoBalance && (
+                    <Row label="Promo balance" value={formatCurrency(override.promoBalance)} />
+                  )}
+                  {override.accruedDeferredInterest && (
+                    <Row label="Deferred interest at risk" value={formatCurrency(override.accruedDeferredInterest)} />
+                  )}
+                  {requiredMonthly && (
+                    <Row
+                      label="Required monthly payment"
+                      value={`${formatCurrency(requiredMonthly)}/mo to clear by deadline`}
+                    />
+                  )}
+                </>
               );
             })()}
           </CardContent>

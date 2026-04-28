@@ -9,7 +9,7 @@ export async function PATCH(
   const { accountId } = await params;
   const body = await request.json();
 
-  const { promoExpirationDate, isDeferredInterest, promoAprPercentage, notes } = body;
+  const { promoExpirationDate, isDeferredInterest, promoAprPercentage, promoBalance, accruedDeferredInterest, notes } = body;
 
   await db
     .insert(manualOverrides)
@@ -18,6 +18,8 @@ export async function PATCH(
       promoExpirationDate: promoExpirationDate ?? null,
       isDeferredInterest: isDeferredInterest ?? false,
       promoAprPercentage: promoAprPercentage?.toString() ?? null,
+      promoBalance: promoBalance?.toString() ?? null,
+      accruedDeferredInterest: accruedDeferredInterest?.toString() ?? null,
       notes: notes ?? null,
     })
     .onConflictDoUpdate({
@@ -26,6 +28,8 @@ export async function PATCH(
         promoExpirationDate: promoExpirationDate ?? null,
         isDeferredInterest: isDeferredInterest ?? false,
         promoAprPercentage: promoAprPercentage?.toString() ?? null,
+        promoBalance: promoBalance?.toString() ?? null,
+        accruedDeferredInterest: accruedDeferredInterest?.toString() ?? null,
         notes: notes ?? null,
         updatedAt: new Date(),
       },

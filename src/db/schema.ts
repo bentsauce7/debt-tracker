@@ -88,6 +88,8 @@ export const manualOverrides = pgTable('manual_overrides', {
   promoExpirationDate: date('promo_expiration_date'),
   isDeferredInterest: boolean('is_deferred_interest').default(false),
   promoAprPercentage: numeric('promo_apr_percentage', { precision: 6, scale: 3 }),
+  promoBalance: numeric('promo_balance', { precision: 12, scale: 2 }),
+  accruedDeferredInterest: numeric('accrued_deferred_interest', { precision: 12, scale: 2 }),
   notes: text('notes'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
