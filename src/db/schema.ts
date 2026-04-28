@@ -94,6 +94,7 @@ export const manualOverrides = pgTable('manual_overrides', {
 
 export const syncLog = pgTable('sync_log', {
   id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id'),
   startedAt: timestamp('started_at').notNull().defaultNow(),
   completedAt: timestamp('completed_at'),
   itemsSynced: integer('items_synced').default(0),

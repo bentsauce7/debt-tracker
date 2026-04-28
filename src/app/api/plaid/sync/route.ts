@@ -22,7 +22,7 @@ export async function POST() {
 
   const [logRow] = await db
     .insert(syncLog)
-    .values({ status: 'running' })
+    .values({ userId, status: 'running' })
     .returning({ id: syncLog.id });
 
   const logId = logRow.id;

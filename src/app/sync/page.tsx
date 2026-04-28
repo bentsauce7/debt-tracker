@@ -11,7 +11,7 @@ import { AlertTriangle } from 'lucide-react';
 export default async function SyncPage() {
   const { userId } = await auth();
   const [logs, plaid, mx] = await Promise.all([
-    db.select().from(syncLog).orderBy(desc(syncLog.startedAt)).limit(10),
+    db.select().from(syncLog).where(eq(syncLog.userId, userId!)).orderBy(desc(syncLog.startedAt)).limit(10),
     db.select().from(plaidItems).where(eq(plaidItems.userId, userId!)),
     db.select().from(mxMembers).where(eq(mxMembers.userId, userId!)),
   ]);
