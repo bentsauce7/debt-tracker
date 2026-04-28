@@ -10,6 +10,7 @@ export async function POST() {
       products: [Products.Liabilities],
       country_codes: [CountryCode.Us],
       language: 'en',
+      redirect_uri: process.env.PLAID_OAUTH_REDIRECT_URI,
     });
 
     return NextResponse.json({ link_token: data.link_token });

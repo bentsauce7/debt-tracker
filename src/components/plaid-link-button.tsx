@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { usePlaidLink } from 'react-plaid-link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -8,9 +8,10 @@ import { Link2 } from 'lucide-react';
 
 interface PlaidLinkButtonProps {
   linkToken: string;
+  receivedRedirectUri?: string;
 }
 
-export function PlaidLinkButton({ linkToken }: PlaidLinkButtonProps) {
+export function PlaidLinkButton({ linkToken, receivedRedirectUri }: PlaidLinkButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -40,7 +41,16 @@ export function PlaidLinkButton({ linkToken }: PlaidLinkButtonProps) {
     [router],
   );
 
-  const { open, ready } = usePlaidLink({ token: linkToken, onSuccess });
+  const { open, ready } = usePlaidLink({
+    token: linkToken,
+    onSuccess,
+    receivedRedirectUri,
+  });
+
+  // Auto-resume when returning from OAuth redirect
+  useEffect(() => {
+    if (ready && receivedRedirectUri) open();
+  }, [ready, receivedRedirectUri, open]);
 
   return (
     <div className="space-y-3">

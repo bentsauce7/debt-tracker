@@ -17,6 +17,7 @@ async function getLinkToken(): Promise<string | null> {
       products: [Products.Liabilities],
       country_codes: [CountryCode.Us],
       language: 'en',
+      redirect_uri: process.env.PLAID_OAUTH_REDIRECT_URI,
     });
     return data.link_token;
   } catch {
@@ -49,8 +50,18 @@ async function getConnectedItems() {
   };
 }
 
-export default async function ConnectPage() {
+export default async function ConnectPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ oauth_state_id?: string }>;
+}) {
+  const params = await searchParams;
   const [linkToken, { plaid, mx }] = await Promise.all([getLinkToken(), getConnectedItems()]);
+
+  const receivedRedirectUri =
+    params.oauth_state_id && process.env.PLAID_OAUTH_REDIRECT_URI
+      ? `${process.env.PLAID_OAUTH_REDIRECT_URI}?oauth_state_id=${params.oauth_state_id}`
+      : undefined;
   const allConnected = [...plaid, ...mx];
 
   return (
@@ -72,7 +83,7 @@ export default async function ConnectPage() {
           </CardHeader>
           <CardContent>
             {linkToken ? (
-              <PlaidLinkButton linkToken={linkToken} />
+              <PlaidLinkButton linkToken={linkToken} receivedRedirectUri={receivedRedirectUri} />
             ) : (
               <div className="flex items-start gap-2 text-sm text-destructive">
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
