@@ -1,9 +1,9 @@
 import { notFound } from 'next/navigation';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import Link from 'next/link';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { accounts, liabilities, aprs, manualOverrides, plaidItems, mxMembers, promoPurchases } from '@/db/schema';
+import { accounts, liabilities, aprs, manualOverrides, plaidItems, mxMembers, promoPurchases, transactions } from '@/db/schema';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,11 +28,15 @@ async function getAccount(accountId: string, userId: string) {
   const ownerUserId = account.plaid_items?.userId ?? account.mx_members?.userId;
   if (ownerUserId !== userId) return null;
 
-  const [liability, accountAprs, override, purchases] = await Promise.all([
+  const [liability, accountAprs, override, purchases, accountTransactions] = await Promise.all([
     db.select().from(liabilities).where(eq(liabilities.accountId, accountId)).limit(1),
     db.select().from(aprs).where(eq(aprs.accountId, accountId)),
     db.select().from(manualOverrides).where(eq(manualOverrides.accountId, accountId)).limit(1),
     db.select().from(promoPurchases).where(eq(promoPurchases.accountId, accountId)),
+    db.select().from(transactions)
+      .where(eq(transactions.accountId, accountId))
+      .orderBy(desc(transactions.date))
+      .limit(100),
   ]);
 
   return {
@@ -42,6 +46,7 @@ async function getAccount(accountId: string, userId: string) {
     aprs: accountAprs,
     override: override[0] ?? null,
     purchases,
+    accountTransactions,
   };
 }
 
@@ -59,7 +64,7 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
 
   if (!data) notFound();
 
-  const { account, institution, liability, aprs: accountAprs, override, purchases } = data;
+  const { account, institution, liability, aprs: accountAprs, override, purchases, accountTransactions } = data;
   const util = calcUtilization(account.currentBalance, account.creditLimit);
   const specialApr = accountAprs.find((a) => a.aprType === 'special');
 
@@ -237,7 +242,7 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
           <CardTitle>Promotional Purchases</CardTitle>
         </CardHeader>
         <CardContent>
-          <PromoPurchasesSection accountId={account.accountId} initial={purchases} />
+          <PromoPurchasesSection accountId={account.accountId} initial={purchases} availableTransactions={accountTransactions} />
         </CardContent>
       </Card>
 

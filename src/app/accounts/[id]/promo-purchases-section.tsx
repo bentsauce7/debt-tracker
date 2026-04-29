@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Trash2, Plus } from 'lucide-react';
+import { Trash2, Plus, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,6 +16,16 @@ type PromoPurchase = {
   isDeferredInterest: boolean;
 };
 
+type Transaction = {
+  id: string;
+  transactionId: string;
+  name: string;
+  merchantName: string | null;
+  amount: string;
+  date: string;
+  pending: boolean;
+};
+
 function calcRequiredMonthly(purchaseAmount: string, promoEndDate: string): number | null {
   const amount = parseFloat(purchaseAmount);
   const daysLeft = Math.ceil((new Date(promoEndDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -28,15 +38,22 @@ function daysRemaining(promoEndDate: string): number {
   return Math.ceil((new Date(promoEndDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 }
 
+type Mode = 'idle' | 'pick-transaction' | 'manual-form' | 'confirm-transaction';
+
 export function PromoPurchasesSection({
   accountId,
   initial,
+  availableTransactions,
 }: {
   accountId: string;
   initial: PromoPurchase[];
+  availableTransactions: Transaction[];
 }) {
   const [purchases, setPurchases] = useState<PromoPurchase[]>(initial);
-  const [showForm, setShowForm] = useState(false);
+  const [mode, setMode] = useState<Mode>('idle');
+  const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+
+  // Shared form state
   const [description, setDescription] = useState('');
   const [purchaseAmount, setPurchaseAmount] = useState('');
   const [purchaseDate, setPurchaseDate] = useState('');
@@ -46,8 +63,35 @@ export function PromoPurchasesSection({
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
+  // Posted purchases only (positive = debit on credit card)
+  const eligibleTransactions = availableTransactions.filter((t) => !t.pending && parseFloat(t.amount) > 0);
+
+  function resetForm() {
+    setDescription('');
+    setPurchaseAmount('');
+    setPurchaseDate('');
+    setPromoEndDate('');
+    setIsDeferredInterest(false);
+    setError(null);
+    setSelectedTx(null);
+    setMode('idle');
+  }
+
+  function selectTransaction(tx: Transaction) {
+    setSelectedTx(tx);
+    setDescription(tx.merchantName ?? tx.name);
+    setPurchaseAmount(tx.amount);
+    setPurchaseDate(tx.date);
+    setPromoEndDate('');
+    setIsDeferredInterest(false);
+    setMode('confirm-transaction');
+  }
+
+  async function handleSave() {
+    if (!promoEndDate) {
+      setError('Promo end date is required');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -65,12 +109,7 @@ export function PromoPurchasesSection({
       if (!res.ok) throw new Error('Failed to save');
       const created = await res.json();
       setPurchases((prev) => [...prev, created]);
-      setDescription('');
-      setPurchaseAmount('');
-      setPurchaseDate('');
-      setPromoEndDate('');
-      setIsDeferredInterest(false);
-      setShowForm(false);
+      resetForm();
     } catch {
       setError('Failed to save purchase');
     } finally {
@@ -82,22 +121,22 @@ export function PromoPurchasesSection({
     setDeletingId(id);
     try {
       const res = await fetch(`/api/promo-purchases/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete');
+      if (!res.ok) throw new Error();
       setPurchases((prev) => prev.filter((p) => p.id !== id));
     } catch {
-      // silently fail — purchase stays in list
+      // stay in list on failure
     } finally {
       setDeletingId(null);
     }
   }
 
   const totalRequired = purchases.reduce((sum, p) => {
-    const monthly = calcRequiredMonthly(p.purchaseAmount, p.promoEndDate);
-    return sum + (monthly ?? 0);
+    return sum + (calcRequiredMonthly(p.purchaseAmount, p.promoEndDate) ?? 0);
   }, 0);
 
   return (
     <div className="space-y-4">
+      {/* Existing purchases */}
       {purchases.length > 0 && (
         <div className="space-y-3">
           {purchases.map((p) => {
@@ -143,8 +182,81 @@ export function PromoPurchasesSection({
         </div>
       )}
 
-      {showForm ? (
-        <form onSubmit={handleAdd} className="space-y-4 pt-2">
+      {/* Transaction picker */}
+      {mode === 'pick-transaction' && (
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">Select the purchase that's on promotional financing:</p>
+          <div className="border rounded-md divide-y max-h-72 overflow-y-auto">
+            {eligibleTransactions.length === 0 ? (
+              <p className="text-sm text-muted-foreground p-4">No posted transactions found.</p>
+            ) : (
+              eligibleTransactions.map((tx) => (
+                <button
+                  key={tx.transactionId}
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-accent transition-colors text-left"
+                  onClick={() => selectTransaction(tx)}
+                >
+                  <div>
+                    <p className="font-medium">{tx.merchantName ?? tx.name}</p>
+                    <p className="text-muted-foreground">{formatDate(tx.date)}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="font-mono">{formatCurrency(tx.amount)}</span>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button variant="ghost" size="sm" onClick={resetForm}>Cancel</Button>
+            <Button variant="ghost" size="sm" onClick={() => setMode('manual-form')}>
+              Enter manually instead
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm selected transaction — just needs promo end date */}
+      {mode === 'confirm-transaction' && selectedTx && (
+        <div className="space-y-4 border rounded-md p-4">
+          <div className="text-sm space-y-0.5">
+            <p className="font-medium">{selectedTx.merchantName ?? selectedTx.name}</p>
+            <p className="text-muted-foreground">{formatCurrency(selectedTx.amount)} · {formatDate(selectedTx.date)}</p>
+          </div>
+          <div className="space-y-2 max-w-xs">
+            <Label htmlFor="tx-end-date">Promo end date</Label>
+            <Input
+              id="tx-end-date"
+              type="date"
+              required
+              value={promoEndDate}
+              onChange={(e) => setPromoEndDate(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              id="tx-deferred"
+              type="checkbox"
+              checked={isDeferredInterest}
+              onChange={(e) => setIsDeferredInterest(e.target.checked)}
+              className="h-4 w-4 rounded border-input"
+            />
+            <Label htmlFor="tx-deferred" className="cursor-pointer">Deferred interest</Label>
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <div className="flex gap-2">
+            <Button size="sm" disabled={saving} onClick={handleSave}>
+              {saving ? 'Saving…' : 'Add purchase'}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setMode('pick-transaction')}>Back</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Manual form */}
+      {mode === 'manual-form' && (
+        <div className="space-y-4 border rounded-md p-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="pp-desc">Description (optional)</Label>
@@ -204,24 +316,33 @@ export function PromoPurchasesSection({
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={saving}>
+            <Button size="sm" disabled={saving} onClick={handleSave}>
               {saving ? 'Saving…' : 'Add purchase'}
             </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setShowForm(false)}>
-              Cancel
-            </Button>
+            <Button size="sm" variant="ghost" onClick={resetForm}>Cancel</Button>
           </div>
-        </form>
-      ) : (
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5"
-          onClick={() => setShowForm(true)}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add promotional purchase
-        </Button>
+        </div>
+      )}
+
+      {/* Add buttons — only show when idle */}
+      {mode === 'idle' && (
+        <div className="flex gap-2 flex-wrap">
+          {eligibleTransactions.length > 0 && (
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setMode('pick-transaction')}>
+              <Plus className="h-3.5 w-3.5" />
+              Pick from transactions
+            </Button>
+          )}
+          <Button
+            variant={eligibleTransactions.length > 0 ? 'ghost' : 'outline'}
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setMode('manual-form')}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add manually
+          </Button>
+        </div>
       )}
     </div>
   );

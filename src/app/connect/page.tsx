@@ -6,6 +6,7 @@ import { db } from '@/db';
 import { plaidItems, mxMembers, accounts } from '@/db/schema';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PlaidLinkButton } from '@/components/plaid-link-button';
+import { PlaidUpdateButton } from '@/components/plaid-update-button';
 import { MxConnectButton } from '@/components/mx-connect-button';
 import { RemoveItemButton } from '@/components/remove-item-button';
 import { AlertTriangle, Building2 } from 'lucide-react';
@@ -15,7 +16,7 @@ async function getLinkToken(): Promise<string | null> {
     const { data } = await plaidClient.linkTokenCreate({
       user: { client_user_id: 'shared-household' },
       client_name: 'Debt Tracker',
-      products: [Products.Liabilities],
+      products: [Products.Liabilities, Products.Transactions],
       country_codes: [CountryCode.Us],
       language: 'en',
       redirect_uri: process.env.PLAID_OAUTH_REDIRECT_URI,
@@ -115,24 +116,27 @@ export default async function ConnectPage({
           </h2>
           <div className="space-y-2">
             {plaid.map((item) => (
-              <div key={item.id} className="flex items-center justify-between rounded-lg border px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium">
-                      {item.institutionName ?? 'Unknown institution'}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Plaid · {item.accountCount} credit account{item.accountCount !== 1 ? 's' : ''}
-                      {item.needsReauth && <span className="ml-2 text-destructive">· needs reauth</span>}
-                    </p>
+              <div key={item.id} className="rounded-lg border px-4 py-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">
+                        {item.institutionName ?? 'Unknown institution'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Plaid · {item.accountCount} credit account{item.accountCount !== 1 ? 's' : ''}
+                        {item.needsReauth && <span className="ml-2 text-destructive">· needs reauth</span>}
+                      </p>
+                    </div>
                   </div>
+                  <RemoveItemButton
+                    itemId={item.id}
+                    apiPath={`/api/plaid/items/${item.id}`}
+                    institutionName={item.institutionName ?? 'this institution'}
+                  />
                 </div>
-                <RemoveItemButton
-                  itemId={item.id}
-                  apiPath={`/api/plaid/items/${item.id}`}
-                  institutionName={item.institutionName ?? 'this institution'}
-                />
+                <PlaidUpdateButton itemId={item.id} />
               </div>
             ))}
             {mx.map((member) => (

@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { plaidItems, accounts, liabilities, aprs, syncLog } from '@/db/schema';
+import { plaidItems, accounts, liabilities, aprs, transactions, syncLog } from '@/db/schema';
 import { plaidClient } from '@/lib/plaid';
 import { decrypt } from '@/lib/crypto';
 
@@ -126,6 +126,68 @@ export async function POST() {
               })),
             );
           }
+        }
+
+        // Sync transactions (requires transactions product — skip gracefully if not enabled)
+        try {
+          let cursor = item.cursor ?? undefined;
+          let hasMore = true;
+
+          while (hasMore) {
+            const txResp = await plaidClient.transactionsSync({
+              access_token: accessToken,
+              cursor,
+            });
+            const { added, modified, removed, next_cursor, has_more } = txResp.data;
+
+            if (added.length > 0) {
+              await db.insert(transactions).values(
+                added.map((tx) => ({
+                  accountId: tx.account_id,
+                  transactionId: tx.transaction_id,
+                  name: tx.name,
+                  merchantName: tx.merchant_name ?? undefined,
+                  amount: tx.amount.toString(),
+                  date: tx.date,
+                  pending: tx.pending,
+                })),
+              ).onConflictDoUpdate({
+                target: transactions.transactionId,
+                set: {
+                  name: sql`excluded.name`,
+                  merchantName: sql`excluded.merchant_name`,
+                  amount: sql`excluded.amount`,
+                  date: sql`excluded.date`,
+                  pending: sql`excluded.pending`,
+                },
+              });
+            }
+
+            if (modified.length > 0) {
+              for (const tx of modified) {
+                await db.update(transactions).set({
+                  name: tx.name,
+                  merchantName: tx.merchant_name ?? undefined,
+                  amount: tx.amount.toString(),
+                  date: tx.date,
+                  pending: tx.pending,
+                }).where(eq(transactions.transactionId, tx.transaction_id));
+              }
+            }
+
+            if (removed.length > 0) {
+              for (const tx of removed) {
+                await db.delete(transactions).where(eq(transactions.transactionId, tx.transaction_id));
+              }
+            }
+
+            cursor = next_cursor;
+            hasMore = has_more;
+          }
+
+          await db.update(plaidItems).set({ cursor, updatedAt: new Date() }).where(eq(plaidItems.id, item.id));
+        } catch {
+          // transactions product not enabled for this item — skip silently
         }
 
         itemsSynced++;
