@@ -20,6 +20,7 @@ async function getLinkToken(): Promise<string | null> {
       country_codes: [CountryCode.Us],
       language: 'en',
       redirect_uri: process.env.PLAID_OAUTH_REDIRECT_URI,
+      webhook: `${process.env.NEXT_PUBLIC_APP_URL}/api/plaid/webhook`,
     });
     return data.link_token;
   } catch {
