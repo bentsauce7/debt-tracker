@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency, formatPercent, formatDate, calcUtilization } from '@/lib/utils';
 import { ArrowLeft } from 'lucide-react';
+import { OverrideForm } from './override-form';
 
 async function getAccount(accountId: string, userId: string) {
   const [account] = await db
@@ -164,38 +165,47 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
         </Card>
       )}
 
-      {override && override.promoExpirationDate && (
+      {(specialApr || override?.promoExpirationDate) && (
         <Card>
           <CardHeader>
             <CardTitle>Promotional Rate</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2 text-sm">
             {(() => {
-              const promoAprPct = override.promoAprPercentage ?? specialApr?.aprPercentage;
-              // Promo balance: manual override → Plaid balance_subject_to_apr → null
-              const promoBalStr = override.promoBalance ?? specialApr?.balanceSubjectToApr;
+              const promoAprPct = override?.promoAprPercentage ?? specialApr?.aprPercentage;
+              const promoBalStr = override?.promoBalance ?? specialApr?.balanceSubjectToApr;
               const promoBalAmt = promoBalStr ? parseFloat(promoBalStr) : 0;
-              const today = new Date();
-              const expiry = new Date(override.promoExpirationDate!);
-              const daysLeft = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-              const monthsLeft = Math.max(1, Math.round(daysLeft / 30.44));
-              const requiredMonthly = promoBalAmt > 0 ? promoBalAmt / monthsLeft : null;
-              const promoBalSource = override.promoBalance ? null : specialApr?.balanceSubjectToApr ? 'Plaid' : null;
+              const promoBalSource = override?.promoBalance ? null : specialApr?.balanceSubjectToApr ? 'Plaid' : null;
+              const expiryDate = override?.promoExpirationDate ?? null;
+              let daysLeft: number | null = null;
+              let requiredMonthly: number | null = null;
+              if (expiryDate) {
+                const today = new Date();
+                daysLeft = Math.ceil((new Date(expiryDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                const monthsLeft = Math.max(1, Math.round(daysLeft / 30.44));
+                requiredMonthly = promoBalAmt > 0 ? promoBalAmt / monthsLeft : null;
+              }
               return (
                 <>
                   <Row
                     label="Promo APR"
                     value={promoAprPct ? formatPercent(parseFloat(promoAprPct)) : '—'}
                   />
-                  <Row label="Expires" value={formatDate(override.promoExpirationDate)} />
-                  <Row
-                    label="Type"
-                    value={override.isDeferredInterest ? 'Deferred interest' : 'Standard promo'}
-                  />
-                  {daysLeft > 0 ? (
-                    <Row label="Time remaining" value={`${daysLeft} day${daysLeft !== 1 ? 's' : ''}`} />
-                  ) : (
-                    <Row label="Status" value="Expired" />
+                  {expiryDate && (
+                    <Row label="Expires" value={formatDate(expiryDate)} />
+                  )}
+                  {override && (
+                    <Row
+                      label="Type"
+                      value={override.isDeferredInterest ? 'Deferred interest' : 'Standard promo'}
+                    />
+                  )}
+                  {daysLeft !== null && (
+                    daysLeft > 0 ? (
+                      <Row label="Time remaining" value={`${daysLeft} day${daysLeft !== 1 ? 's' : ''}`} />
+                    ) : (
+                      <Row label="Status" value="Expired" />
+                    )
                   )}
                   {promoBalStr && (
                     <Row
@@ -203,7 +213,7 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
                       value={formatCurrency(promoBalStr)}
                     />
                   )}
-                  {override.accruedDeferredInterest && (
+                  {override?.accruedDeferredInterest && (
                     <Row label="Deferred interest at risk" value={formatCurrency(override.accruedDeferredInterest)} />
                   )}
                   {requiredMonthly && (
@@ -218,6 +228,15 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Manual Overrides</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <OverrideForm accountId={account.accountId} initial={override} />
+        </CardContent>
+      </Card>
 
       <p className="text-xs text-muted-foreground">
         Last synced: {account.lastSyncedAt ? formatDate(account.lastSyncedAt) : 'never'}

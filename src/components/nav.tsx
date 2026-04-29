@@ -21,18 +21,18 @@ export function Nav() {
     <nav className="border-b bg-background">
       <div className="container flex h-14 items-center justify-between">
         <div className="flex items-center gap-1">
-          <span className="mr-4 font-semibold text-sm">Debt Tracker</span>
+          <span className="hidden sm:inline mr-4 font-semibold text-sm">Debt Tracker</span>
           {links.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
               className={cn(
-                'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground',
+                'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground',
                 pathname === href ? 'bg-accent text-accent-foreground' : 'text-muted-foreground',
               )}
             >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">{label}</span>
             </Link>
           ))}
         </div>
