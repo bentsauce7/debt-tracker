@@ -185,7 +185,7 @@ export function PromoPurchasesSection({
       {/* Transaction picker */}
       {mode === 'pick-transaction' && (
         <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">Select the purchase that's on promotional financing:</p>
+          <p className="text-sm text-muted-foreground">Select the purchase that&apos;s on promotional financing:</p>
           <div className="border rounded-md divide-y max-h-72 overflow-y-auto">
             {eligibleTransactions.length === 0 ? (
               <p className="text-sm text-muted-foreground p-4">No posted transactions found.</p>
