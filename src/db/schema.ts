@@ -94,6 +94,19 @@ export const manualOverrides = pgTable('manual_overrides', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+export const promoPurchases = pgTable('promo_purchases', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  accountId: text('account_id')
+    .notNull()
+    .references(() => accounts.accountId, { onDelete: 'cascade' }),
+  description: text('description'),
+  purchaseAmount: numeric('purchase_amount', { precision: 12, scale: 2 }).notNull(),
+  purchaseDate: date('purchase_date'),
+  promoEndDate: date('promo_end_date').notNull(),
+  isDeferredInterest: boolean('is_deferred_interest').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 export const syncLog = pgTable('sync_log', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id'),
