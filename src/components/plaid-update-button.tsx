@@ -5,7 +5,7 @@ import { usePlaidLink } from 'react-plaid-link';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-export function PlaidUpdateButton({ itemId }: { itemId: string }) {
+export function PlaidUpdateButton({ itemId, label = 'Enable transactions' }: { itemId: string; label?: string }) {
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -55,7 +55,7 @@ export function PlaidUpdateButton({ itemId }: { itemId: string }) {
     <div className="flex items-center gap-2">
       <Button variant="outline" size="sm" className="gap-1.5" onClick={handleClick} disabled={loading}>
         <RefreshCw className="h-3.5 w-3.5" />
-        {loading ? 'Loading…' : 'Enable transactions'}
+        {loading ? 'Loading…' : label}
       </Button>
       {error && <span className="text-xs text-destructive">{error}</span>}
     </div>

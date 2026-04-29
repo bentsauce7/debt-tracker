@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SyncButton } from '@/components/sync-button';
 import { RegisterWebhooksButton } from '@/components/register-webhooks-button';
+import { PlaidUpdateButton } from '@/components/plaid-update-button';
 import { formatDate } from '@/lib/utils';
 import { AlertTriangle } from 'lucide-react';
 
@@ -32,20 +33,24 @@ export default async function SyncPage() {
       </div>
 
       {hasReauth && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4 flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
-          <div>
+        <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
             <p className="font-medium text-destructive">Reauthorization needed</p>
-            <p className="text-sm text-destructive/80 mt-0.5">
-              The following institutions need you to reconnect:{' '}
-              {[
-                ...reauthPlaid.map((i) => i.institutionName ?? i.itemId),
-                ...reauthMx.map((m) => m.institutionName ?? m.memberGuid),
-              ].join(', ')}.
-            </p>
-            <p className="text-sm text-destructive/80 mt-1">
-              Go to <a href="/connect" className="underline">Connect</a> to re-link them.
-            </p>
+          </div>
+          <div className="space-y-2 pl-8">
+            {reauthPlaid.map((item) => (
+              <div key={item.id} className="flex items-center justify-between gap-4">
+                <span className="text-sm text-destructive/80">{item.institutionName ?? item.itemId}</span>
+                <PlaidUpdateButton itemId={item.id} label="Reconnect" />
+              </div>
+            ))}
+            {reauthMx.length > 0 && (
+              <p className="text-sm text-destructive/80">
+                {reauthMx.map((m) => m.institutionName ?? m.memberGuid).join(', ')} —{' '}
+                <a href="/connect" className="underline">reconnect via Connect page</a>
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -63,13 +68,13 @@ export default async function SyncPage() {
           ) : (
             <ul className="space-y-2 text-sm">
               {plaid.map((item) => (
-                <li key={item.id} className="flex items-center justify-between">
+                <li key={item.id} className="flex items-center justify-between gap-4">
                   <span>
                     {item.institutionName ?? item.itemId}
                     <span className="ml-2 text-xs text-muted-foreground">Plaid</span>
                   </span>
                   {item.needsReauth ? (
-                    <Badge variant="destructive">Needs reauth</Badge>
+                    <PlaidUpdateButton itemId={item.id} label="Reconnect" />
                   ) : (
                     <Badge variant="success">Connected</Badge>
                   )}
