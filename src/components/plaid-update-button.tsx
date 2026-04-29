@@ -21,9 +21,15 @@ export function PlaidUpdateButton({ itemId, label = 'Enable transactions' }: { i
     }
   }, []);
 
+  const onExit = useCallback(() => {
+    setLinkToken(null);
+    setLoading(false);
+  }, []);
+
   const { open, ready } = usePlaidLink({
     token: linkToken ?? '',
     onSuccess,
+    onExit,
   });
 
   useEffect(() => {
