@@ -108,7 +108,11 @@ export async function POST() {
         }
       }
     } catch (err) {
-      itemErrors.push(err instanceof Error ? err.message : String(err));
+      const plaidMsg = (err as { response?: { data?: { error_message?: string; error_code?: string } } })?.response?.data;
+      const msg = plaidMsg
+        ? `${plaidMsg.error_code}: ${plaidMsg.error_message}`
+        : (err instanceof Error ? err.message : String(err));
+      itemErrors.push(msg);
     }
 
     results.push({ institution: label, statementsProcessed, errors: itemErrors });
