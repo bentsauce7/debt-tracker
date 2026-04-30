@@ -11,7 +11,7 @@ export async function POST() {
     const { data } = await plaidClient.linkTokenCreate({
       user: { client_user_id: userId },
       client_name: 'Debt Tracker',
-      products: [Products.Liabilities, Products.Statements],
+      products: [Products.Liabilities],
       country_codes: [CountryCode.Us],
       language: 'en',
       redirect_uri: process.env.PLAID_OAUTH_REDIRECT_URI,
