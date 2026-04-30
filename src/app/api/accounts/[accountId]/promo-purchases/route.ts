@@ -37,6 +37,7 @@ export async function POST(
     feeAmount,
     feeType,
     feeFrequency,
+    accruedDeferredInterest,
   } = await request.json();
 
   if (!purchaseAmount || !promoEndDate) {
@@ -54,6 +55,11 @@ export async function POST(
       ? Number(feeAmount).toString()
       : null;
 
+  const normalizedAccrued =
+    accruedDeferredInterest != null && Number.isFinite(Number(accruedDeferredInterest))
+      ? Number(accruedDeferredInterest).toString()
+      : null;
+
   const [created] = await db
     .insert(promoPurchases)
     .values({
@@ -66,6 +72,7 @@ export async function POST(
       feeAmount: normalizedFeeAmount,
       feeType: normalizedFeeType,
       feeFrequency: normalizedFeeFrequency,
+      accruedDeferredInterest: normalizedAccrued,
     })
     .returning();
 

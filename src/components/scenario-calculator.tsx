@@ -19,12 +19,18 @@ export type ScenarioAccount = {
   promoBalance?: number;    // specific balance that must be cleared by deadline
   accruedDeferredInterest?: number; // interest at risk if deadline missed
   monthlyPromoFee?: number; // installment-plan fees charged each month during promo
-  // Deferred-only fields, scoped to the deferred-interest portion of an account.
-  // Drive the Promo Deadlines panel; independent of the account-level promo
-  // aggregate (an account can have a deferred Synchrony purchase AND a separate
-  // non-deferred Citi Flex Pay plan with different end dates).
-  deferredPromoBalance?: number;
-  deferredPromoExpiresMonths?: number;
+};
+
+export type DeferredDeadline = {
+  accountId: string;
+  accountName: string;
+  description: string;
+  balance: number;
+  promoEndDate: string;
+  expiresMonths: number;
+  // null when the purchase has no purchaseDate (statement didn't disclose one
+  // and we can't compute interest accrued so far).
+  accruedInterest: number | null;
 };
 
 type AccountResult = {
@@ -282,7 +288,13 @@ function StrategyCard({
   );
 }
 
-export function ScenarioCalculator({ accounts }: { accounts: ScenarioAccount[] }) {
+export function ScenarioCalculator({
+  accounts,
+  deferredDeadlines = [],
+}: {
+  accounts: ScenarioAccount[];
+  deferredDeadlines?: DeferredDeadline[];
+}) {
   const [extra, setExtra] = useState('');
   const extraPayment = Math.max(0, parseFloat(extra) || 0);
 
@@ -302,8 +314,10 @@ export function ScenarioCalculator({ accounts }: { accounts: ScenarioAccount[] }
   const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
   const totalMinPayments = accounts.reduce((s, a) => s + a.minPayment, 0);
   const promoAccounts = accounts.filter((a) => a.promoExpiresMonths !== undefined);
-  const deferredAccounts = accounts.filter((a) => a.deferredPromoExpiresMonths !== undefined);
-  const totalDeferredAtRisk = deferredAccounts.reduce((s, a) => s + (a.accruedDeferredInterest ?? 0), 0);
+  const totalDeferredAtRisk = deferredDeadlines.reduce(
+    (s, d) => s + (d.accruedInterest ?? 0),
+    0,
+  );
 
   return (
     <div className="space-y-8">
@@ -328,8 +342,8 @@ export function ScenarioCalculator({ accounts }: { accounts: ScenarioAccount[] }
         )}
       </div>
 
-      {/* Promo Deadlines panel */}
-      {deferredAccounts.length > 0 && (
+      {/* Promo Deadlines panel — one row per active deferred-interest purchase */}
+      {deferredDeadlines.length > 0 && (
         <Card className="border-amber-200 bg-amber-50/50">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base text-amber-800">
@@ -346,49 +360,50 @@ export function ScenarioCalculator({ accounts }: { accounts: ScenarioAccount[] }
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-amber-700 border-b border-amber-200">
-                  <th className="text-left pb-2 font-medium">Account</th>
-                  <th className="text-right pb-2 font-medium">Promo balance</th>
+                  <th className="text-left pb-2 font-medium">Purchase</th>
+                  <th className="text-right pb-2 font-medium">Balance</th>
                   <th className="text-right pb-2 font-medium">Interest at risk</th>
                   <th className="text-right pb-2 font-medium">Deadline</th>
                   <th className="text-right pb-2 font-medium">Need/mo</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-amber-100">
-                {[...deferredAccounts]
-                  .sort(
-                    (a, b) =>
-                      (a.deferredPromoExpiresMonths ?? 999) -
-                      (b.deferredPromoExpiresMonths ?? 999),
-                  )
-                  .map((acct) => {
-                    const months = acct.deferredPromoExpiresMonths ?? 0;
-                    const promoAmt = acct.deferredPromoBalance ?? acct.balance;
-                    const required = months > 0 ? promoAmt / months : promoAmt;
-                    const urgent = months <= 2;
-                    return (
-                      <tr key={acct.accountId} className={urgent ? 'text-red-700' : 'text-amber-900'}>
-                        <td className="py-2 font-medium">{acct.name}</td>
-                        <td className="py-2 text-right font-mono">{formatCurrency(promoAmt)}</td>
-                        <td className="py-2 text-right font-mono">
-                          {acct.accruedDeferredInterest ? formatCurrency(acct.accruedDeferredInterest) : '—'}
-                        </td>
-                        <td className="py-2 text-right">
-                          {months === 0 ? (
-                            <span className="font-semibold">This month</span>
-                          ) : (
-                            `${months}mo`
-                          )}
-                        </td>
-                        <td className="py-2 text-right font-mono font-semibold">
-                          {formatCurrency(required)}/mo
-                        </td>
-                      </tr>
-                    );
-                  })}
+                {deferredDeadlines.map((d, i) => {
+                  const months = d.expiresMonths;
+                  const required = months > 0 ? d.balance / months : d.balance;
+                  const urgent = months <= 2;
+                  return (
+                    <tr
+                      key={`${d.accountId}-${d.promoEndDate}-${i}`}
+                      className={urgent ? 'text-red-700' : 'text-amber-900'}
+                    >
+                      <td className="py-2 font-medium">
+                        <div>{d.accountName}</div>
+                        <div className="text-xs font-normal opacity-80 truncate max-w-[280px]">
+                          {d.description}
+                        </div>
+                      </td>
+                      <td className="py-2 text-right font-mono">{formatCurrency(d.balance)}</td>
+                      <td className="py-2 text-right font-mono">
+                        {d.accruedInterest != null ? formatCurrency(d.accruedInterest) : '—'}
+                      </td>
+                      <td className="py-2 text-right">
+                        {months === 0 ? (
+                          <span className="font-semibold">This month</span>
+                        ) : (
+                          `${months}mo`
+                        )}
+                      </td>
+                      <td className="py-2 text-right font-mono font-semibold">
+                        {formatCurrency(required)}/mo
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             <p className="text-xs text-amber-700 mt-3">
-              These accounts are excluded from the interest simulation below — they accrue no interest during the promo period. Pay at least the required monthly amount on each to avoid the deferred interest charge.
+              Each row is a single deferred-interest purchase. Pay at least the required monthly amount on each before its deadline to avoid having all accrued interest charged retroactively.
             </p>
           </CardContent>
         </Card>

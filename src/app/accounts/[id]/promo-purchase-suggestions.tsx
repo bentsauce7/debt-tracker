@@ -97,6 +97,7 @@ export function PromoPurchaseSuggestions({
           feeAmount: s.feeAmount ?? null,
           feeType: s.feeType ?? null,
           feeFrequency: s.feeFrequency ?? null,
+          accruedDeferredInterest: s.accruedDeferredInterest ?? null,
         }),
       });
       if (!res.ok) throw new Error();

@@ -120,6 +120,7 @@ export const promoPurchases = pgTable('promo_purchases', {
   feeAmount: numeric('fee_amount', { precision: 12, scale: 4 }),
   feeType: text('fee_type'),
   feeFrequency: text('fee_frequency'),
+  accruedDeferredInterest: numeric('accrued_deferred_interest', { precision: 12, scale: 2 }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -154,6 +155,7 @@ export type ExtractedPromoPurchase = {
   feeAmount?: number;
   feeType?: 'fixed' | 'percentage';
   feeFrequency?: 'monthly' | 'quarterly' | 'annual' | 'one_time';
+  accruedDeferredInterest?: number;
 };
 
 export const syncLog = pgTable('sync_log', {

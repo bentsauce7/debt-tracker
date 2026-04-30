@@ -2,7 +2,7 @@ import { and, eq, or } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
 import { accounts, liabilities, aprs, manualOverrides, plaidItems, mxMembers, promoPurchases } from '@/db/schema';
-import { ScenarioCalculator, type ScenarioAccount } from '@/components/scenario-calculator';
+import { ScenarioCalculator, type ScenarioAccount, type DeferredDeadline } from '@/components/scenario-calculator';
 
 export default async function ScenariosPage() {
   const { userId } = await auth();
@@ -62,12 +62,15 @@ export default async function ScenariosPage() {
     db
       .select({
         accountId: promoPurchases.accountId,
+        description: promoPurchases.description,
         purchaseAmount: promoPurchases.purchaseAmount,
+        purchaseDate: promoPurchases.purchaseDate,
         promoEndDate: promoPurchases.promoEndDate,
         isDeferredInterest: promoPurchases.isDeferredInterest,
         feeAmount: promoPurchases.feeAmount,
         feeType: promoPurchases.feeType,
         feeFrequency: promoPurchases.feeFrequency,
+        accruedDeferredInterest: promoPurchases.accruedDeferredInterest,
       })
       .from(promoPurchases)
       .innerJoin(accounts, eq(accounts.accountId, promoPurchases.accountId))
@@ -121,13 +124,6 @@ export default async function ScenariosPage() {
     string,
     { balance: number; earliestEnd: string; anyDeferred: boolean; monthlyFee: number }
   >();
-  // Separate aggregate covering only deferred-interest purchases — drives the
-  // Promo Deadlines panel (which is specifically about retroactive-interest
-  // deadlines, not general promo balances).
-  const deferredAggregateMap = new Map<
-    string,
-    { balance: number; earliestEnd: string }
-  >();
   for (const p of trackedPromos) {
     if (p.promoEndDate < today) continue;
     const existing = promoAggregateMap.get(p.accountId);
@@ -146,19 +142,14 @@ export default async function ScenariosPage() {
       if (p.isDeferredInterest) existing.anyDeferred = true;
       existing.monthlyFee += monthlyFee;
     }
+  }
 
-    if (p.isDeferredInterest) {
-      const def = deferredAggregateMap.get(p.accountId);
-      if (!def) {
-        deferredAggregateMap.set(p.accountId, {
-          balance: amount,
-          earliestEnd: p.promoEndDate,
-        });
-      } else {
-        def.balance += amount;
-        if (p.promoEndDate < def.earliestEnd) def.earliestEnd = p.promoEndDate;
-      }
-    }
+  // Whether the per-account aggregate signals "any active deferred purchase".
+  // Used downstream to route the simulator's deferred-interest behavior.
+  const accountHasDeferred = new Map<string, boolean>();
+  for (const p of trackedPromos) {
+    if (p.promoEndDate < today) continue;
+    if (p.isDeferredInterest) accountHasDeferred.set(p.accountId, true);
   }
 
   const scenarioAccounts: ScenarioAccount[] = creditRows
@@ -215,32 +206,13 @@ export default async function ScenariosPage() {
 
       // Deferred-interest: any deferred among tracked purchases > manual override flag
       const isDeferredInterest = promoActive
-        ? (aggregate?.anyDeferred ?? override?.isDeferredInterest ?? false)
+        ? (accountHasDeferred.get(row.accountId) ?? override?.isDeferredInterest ?? false)
         : false;
 
-      // Deferred-only fields (drive the Promo Deadlines panel). Prefer
-      // tracked-purchase aggregate; fall back to manual override if it is flagged
-      // as deferred.
-      const deferredAggregate = deferredAggregateMap.get(row.accountId);
-      const deferredEnd =
-        deferredAggregate?.earliestEnd ??
-        (override?.isDeferredInterest && override.promoExpiration && override.promoExpiration >= today
-          ? override.promoExpiration
-          : null);
-      const deferredPromoBalance = deferredAggregate
-        ? deferredAggregate.balance
-        : override?.isDeferredInterest && override.promoBalance
-          ? parseFloat(override.promoBalance)
+      const accruedDeferredInterest =
+        promoActive && override?.accruedDeferredInterest
+          ? parseFloat(override.accruedDeferredInterest)
           : undefined;
-      const deferredPromoExpiresMonths = deferredEnd
-        ? Math.max(
-            0,
-            Math.round(
-              (new Date(deferredEnd).getTime() - Date.now()) /
-                (1000 * 60 * 60 * 24 * 30.44),
-            ),
-          )
-        : undefined;
 
       return {
         accountId: row.accountId,
@@ -252,16 +224,61 @@ export default async function ScenariosPage() {
         promoExpiresMonths,
         isDeferredInterest,
         promoBalance,
-        accruedDeferredInterest: promoActive && override?.accruedDeferredInterest
-          ? parseFloat(override.accruedDeferredInterest)
-          : undefined,
+        accruedDeferredInterest,
         monthlyPromoFee: promoActive && aggregate?.monthlyFee ? aggregate.monthlyFee : undefined,
-        deferredPromoBalance,
-        deferredPromoExpiresMonths,
       };
     })
     .filter((a) => a.balance > 0.01)
     .sort((a, b) => b.balance - a.balance);
+
+  const accountNameById = new Map(creditRows.map((r) => [r.accountId, r.name]));
+
+  // Flat per-purchase list of active deferred-interest deadlines. Each tracked
+  // deferred purchase becomes its own row in the Promo Deadlines panel; sorted
+  // by deadline so the most urgent appears first.
+  const deferredDeadlines: DeferredDeadline[] = trackedPromos
+    .filter((p) => p.isDeferredInterest && p.promoEndDate >= today)
+    .map((p) => {
+      const accountName = accountNameById.get(p.accountId) ?? '';
+      const balance = parseFloat(p.purchaseAmount);
+      const purchaseAprPct = aprMap.get(p.accountId) ?? 0;
+      // Prefer the figure extracted from the statement (real per-purchase
+      // accrued deferred interest, with the issuer's deferred-rate
+      // compounding). Fall back to a coarse estimate based on the account's
+      // purchase APR when the statement didn't disclose a per-purchase value.
+      const monthsElapsed = p.purchaseDate
+        ? Math.max(
+            0,
+            (Date.now() - new Date(p.purchaseDate).getTime()) /
+              (1000 * 60 * 60 * 24 * 30.44),
+          )
+        : 0;
+      const storedAccrued = p.accruedDeferredInterest
+        ? parseFloat(p.accruedDeferredInterest)
+        : null;
+      const computedAccrued =
+        p.purchaseDate && purchaseAprPct > 0
+          ? balance * (purchaseAprPct / 100) * (monthsElapsed / 12)
+          : null;
+      const accruedInterest = storedAccrued ?? computedAccrued;
+      const expiresMonths = Math.max(
+        0,
+        Math.round(
+          (new Date(p.promoEndDate).getTime() - Date.now()) /
+            (1000 * 60 * 60 * 24 * 30.44),
+        ),
+      );
+      return {
+        accountId: p.accountId,
+        accountName,
+        description: p.description ?? 'Promotional purchase',
+        balance,
+        promoEndDate: p.promoEndDate,
+        expiresMonths,
+        accruedInterest,
+      };
+    })
+    .sort((a, b) => a.promoEndDate.localeCompare(b.promoEndDate));
 
   return (
     <div className="space-y-8">
@@ -271,7 +288,10 @@ export default async function ScenariosPage() {
           Model accelerated payoff timelines and compare strategies.
         </p>
       </div>
-      <ScenarioCalculator accounts={scenarioAccounts} />
+      <ScenarioCalculator
+        accounts={scenarioAccounts}
+        deferredDeadlines={deferredDeadlines}
+      />
     </div>
   );
 }

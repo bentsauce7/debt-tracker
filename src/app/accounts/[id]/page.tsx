@@ -289,6 +289,9 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
                           {formatCurrency(p.purchaseAmount)}
                           {p.purchaseDate ? ` · purchased ${formatDate(p.purchaseDate)}` : ''}
                           {feeLabel ? ` · ${feeLabel}` : ''}
+                          {p.accruedDeferredInterest
+                            ? ` · ${formatCurrency(p.accruedDeferredInterest)} accrued at risk`
+                            : ''}
                         </p>
                       </div>
                       <div className="text-right shrink-0">
