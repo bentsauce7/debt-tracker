@@ -51,7 +51,7 @@ Rules:
 export async function extractStatement(pdfBase64: string): Promise<StatementExtraction> {
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1024,
+    max_tokens: 8192,
     messages: [
       {
         role: 'user',
@@ -73,11 +73,23 @@ export async function extractStatement(pdfBase64: string): Promise<StatementExtr
     ],
   });
 
-  const text = response.content.find((b) => b.type === 'text')?.text ?? '{}';
+  if (response.stop_reason === 'max_tokens') {
+    throw new Error('Statement too large to extract — model output was truncated');
+  }
 
-  // Strip markdown code fences if present
+  const text = response.content.find((b) => b.type === 'text')?.text ?? '';
   const json = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-  const parsed = JSON.parse(json);
+
+  if (!json) {
+    throw new Error('Model returned empty response — try a different statement PDF');
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new Error('Failed to parse extracted statement data');
+  }
 
   return {
     statementDate: parsed.statementDate ?? null,
