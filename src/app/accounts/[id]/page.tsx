@@ -258,6 +258,61 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
         existingPurchases={purchases}
       />
 
+      {purchases.length > 0 && (() => {
+        const today = new Date().toISOString().slice(0, 10);
+        const active = purchases.filter((p) => p.promoEndDate >= today);
+        const totalActiveBalance = active.reduce((sum, p) => sum + parseFloat(p.purchaseAmount), 0);
+        const earliestEnd = active.length
+          ? active.reduce((min, p) => (p.promoEndDate < min ? p.promoEndDate : min), active[0].promoEndDate)
+          : null;
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle>Tracked Promotional Purchases</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <ul className="space-y-3">
+                {purchases.map((p) => {
+                  const expired = p.promoEndDate < today;
+                  const daysLeft = Math.ceil(
+                    (new Date(p.promoEndDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+                  );
+                  return (
+                    <li key={p.id} className="flex items-start justify-between gap-4 text-sm">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{p.description ?? 'Promotional purchase'}</p>
+                          {p.isDeferredInterest && <Badge variant="secondary">Deferred interest</Badge>}
+                        </div>
+                        <p className="text-muted-foreground">
+                          {formatCurrency(p.purchaseAmount)}
+                          {p.purchaseDate ? ` · purchased ${formatDate(p.purchaseDate)}` : ''}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className={expired ? 'text-destructive font-medium' : 'font-medium'}>
+                          {expired ? 'Expired' : `${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`}
+                        </p>
+                        <p className="text-xs text-muted-foreground">expires {formatDate(p.promoEndDate)}</p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              {active.length > 1 && earliestEnd && (
+                <div className="grid gap-3 sm:grid-cols-2 pt-3 border-t text-sm">
+                  <Row
+                    label="Total active promo balance"
+                    value={formatCurrency(totalActiveBalance.toFixed(2))}
+                  />
+                  <Row label="Earliest expiration" value={formatDate(earliestEnd)} />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       <p className="text-xs text-muted-foreground">
         Last synced: {account.lastSyncedAt ? formatDate(account.lastSyncedAt) : 'never'}
       </p>

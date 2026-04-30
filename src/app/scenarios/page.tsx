@@ -1,7 +1,7 @@
 import { and, eq, or } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { accounts, liabilities, aprs, manualOverrides, plaidItems, mxMembers } from '@/db/schema';
+import { accounts, liabilities, aprs, manualOverrides, plaidItems, mxMembers, promoPurchases } from '@/db/schema';
 import { ScenarioCalculator, type ScenarioAccount } from '@/components/scenario-calculator';
 
 export default async function ScenariosPage() {
@@ -9,7 +9,7 @@ export default async function ScenariosPage() {
   const today = new Date().toISOString().slice(0, 10);
   const userFilter = or(eq(plaidItems.userId, userId!), eq(mxMembers.userId, userId!));
 
-  const [creditRows, purchaseAprs, specialAprs, overrides] = await Promise.all([
+  const [creditRows, purchaseAprs, specialAprs, overrides, trackedPromos] = await Promise.all([
     db
       .select({
         accountId: accounts.accountId,
@@ -58,12 +58,48 @@ export default async function ScenariosPage() {
       .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
       .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
       .where(userFilter),
+
+    db
+      .select({
+        accountId: promoPurchases.accountId,
+        purchaseAmount: promoPurchases.purchaseAmount,
+        promoEndDate: promoPurchases.promoEndDate,
+        isDeferredInterest: promoPurchases.isDeferredInterest,
+      })
+      .from(promoPurchases)
+      .innerJoin(accounts, eq(accounts.accountId, promoPurchases.accountId))
+      .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
+      .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
+      .where(userFilter),
   ]);
 
   const aprMap = new Map(purchaseAprs.map((a) => [a.accountId, parseFloat(a.apr ?? '0')]));
   // Use the most recent special APR per account (take first if multiple)
   const specialAprMap = new Map(specialAprs.map((a) => [a.accountId, a]));
   const overrideMap = new Map(overrides.map((o) => [o.accountId, o]));
+
+  // Aggregate active (not-yet-expired) tracked promo purchases per account:
+  // sum balance, earliest expiration, deferred-interest if any.
+  const promoAggregateMap = new Map<
+    string,
+    { balance: number; earliestEnd: string; anyDeferred: boolean }
+  >();
+  for (const p of trackedPromos) {
+    if (p.promoEndDate < today) continue;
+    const existing = promoAggregateMap.get(p.accountId);
+    const amount = parseFloat(p.purchaseAmount);
+    if (!existing) {
+      promoAggregateMap.set(p.accountId, {
+        balance: amount,
+        earliestEnd: p.promoEndDate,
+        anyDeferred: p.isDeferredInterest,
+      });
+    } else {
+      existing.balance += amount;
+      if (p.promoEndDate < existing.earliestEnd) existing.earliestEnd = p.promoEndDate;
+      if (p.isDeferredInterest) existing.anyDeferred = true;
+    }
+  }
 
   const scenarioAccounts: ScenarioAccount[] = creditRows
     .map((row) => {
@@ -72,40 +108,55 @@ export default async function ScenariosPage() {
       const purchaseAprPct = aprMap.get(row.accountId) ?? 0;
       const override = overrideMap.get(row.accountId);
       const specialApr = specialAprMap.get(row.accountId);
+      const aggregate = promoAggregateMap.get(row.accountId);
 
-      // Promo APR: manual override takes precedence, else use Plaid special APR
+      // Promo APR: manual override > Plaid special APR > 0% default when tracked
+      // purchases exist (promo_purchases has no APR column; promotional purchases
+      // are typically 0% offers).
       const promoAprPct = override?.promoApr != null
         ? parseFloat(override.promoApr)
         : specialApr?.aprPercentage != null
           ? parseFloat(specialApr.aprPercentage)
-          : null;
+          : aggregate
+            ? 0
+            : null;
+
+      // Promo expiration: aggregated earliest end from tracked purchases > manual override
+      const effectivePromoExpiration = aggregate?.earliestEnd ?? override?.promoExpiration ?? null;
 
       const promoActive =
         promoAprPct != null &&
-        override?.promoExpiration != null &&
-        override.promoExpiration >= today;
+        effectivePromoExpiration != null &&
+        effectivePromoExpiration >= today;
 
       const effectiveAprPct = promoActive ? promoAprPct! : purchaseAprPct;
 
       const promoExpiresMonths =
-        promoActive && override!.promoExpiration
+        promoActive && effectivePromoExpiration
           ? Math.max(
               0,
               Math.round(
-                (new Date(override!.promoExpiration).getTime() - Date.now()) /
+                (new Date(effectivePromoExpiration).getTime() - Date.now()) /
                   (1000 * 60 * 60 * 24 * 30.44),
               ),
             )
           : undefined;
 
-      // Promo balance: manual override > Plaid balance_subject_to_apr > total balance
+      // Promo balance: aggregated tracked-purchase total > manual override > Plaid balance_subject_to_apr
       const promoBalance = promoActive
-        ? (override?.promoBalance
+        ? aggregate
+          ? aggregate.balance
+          : override?.promoBalance
             ? parseFloat(override.promoBalance)
             : specialApr?.balanceSubjectToApr
               ? parseFloat(specialApr.balanceSubjectToApr)
-              : undefined)
+              : undefined
         : undefined;
+
+      // Deferred-interest: any deferred among tracked purchases > manual override flag
+      const isDeferredInterest = promoActive
+        ? (aggregate?.anyDeferred ?? override?.isDeferredInterest ?? false)
+        : false;
 
       return {
         accountId: row.accountId,
@@ -115,7 +166,7 @@ export default async function ScenariosPage() {
         apr: effectiveAprPct / 100,
         postPromoApr: promoActive ? purchaseAprPct / 100 : undefined,
         promoExpiresMonths,
-        isDeferredInterest: promoActive ? (override?.isDeferredInterest ?? false) : false,
+        isDeferredInterest,
         promoBalance,
         accruedDeferredInterest: promoActive && override?.accruedDeferredInterest
           ? parseFloat(override.accruedDeferredInterest)
