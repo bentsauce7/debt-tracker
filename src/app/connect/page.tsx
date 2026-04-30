@@ -16,7 +16,7 @@ async function getLinkToken(): Promise<string | null> {
     const { data } = await plaidClient.linkTokenCreate({
       user: { client_user_id: 'shared-household' },
       client_name: 'Debt Tracker',
-      products: [Products.Liabilities],
+      products: [Products.Liabilities, Products.Statements],
       country_codes: [CountryCode.Us],
       language: 'en',
       redirect_uri: process.env.PLAID_OAUTH_REDIRECT_URI,

@@ -120,6 +120,36 @@ export const promoPurchases = pgTable('promo_purchases', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
+export const statements = pgTable('statements', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  accountId: text('account_id')
+    .notNull()
+    .references(() => accounts.accountId, { onDelete: 'cascade' }),
+  plaidStatementId: text('plaid_statement_id').notNull().unique(),
+  statementDate: date('statement_date').notNull(),
+  closingBalance: numeric('closing_balance', { precision: 12, scale: 2 }),
+  minimumPayment: numeric('minimum_payment', { precision: 12, scale: 2 }),
+  paymentDueDate: date('payment_due_date'),
+  extractedAprs: jsonb('extracted_aprs').$type<ExtractedApr[]>().default([]),
+  extractedPromoPurchases: jsonb('extracted_promo_purchases').$type<ExtractedPromoPurchase[]>().default([]),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export type ExtractedApr = {
+  type: string;
+  rate: number;
+  balance?: number;
+  expirationDate?: string;
+};
+
+export type ExtractedPromoPurchase = {
+  description: string;
+  amount: number;
+  purchaseDate?: string;
+  promoEndDate?: string;
+  isDeferredInterest: boolean;
+};
+
 export const syncLog = pgTable('sync_log', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id'),

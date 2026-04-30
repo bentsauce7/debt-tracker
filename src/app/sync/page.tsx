@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SyncButton } from '@/components/sync-button';
 import { RegisterWebhooksButton } from '@/components/register-webhooks-button';
+import { SyncStatementsButton } from '@/components/sync-statements-button';
 import { PlaidUpdateButton } from '@/components/plaid-update-button';
 import { formatDate } from '@/lib/utils';
 import { AlertTriangle } from 'lucide-react';
@@ -106,6 +107,17 @@ export default async function SyncPage() {
           <SyncButton />
         </CardContent>
       </Card>
+
+      {plaid.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Statements</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SyncStatementsButton />
+          </CardContent>
+        </Card>
+      )}
 
       {plaid.length > 0 && (
         <Card>
