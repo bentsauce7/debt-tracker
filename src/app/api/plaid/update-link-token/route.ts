@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
-import { CountryCode, Products } from 'plaid';
+import { CountryCode } from 'plaid';
 import { db } from '@/db';
 import { plaidItems } from '@/db/schema';
 import { plaidClient } from '@/lib/plaid';
@@ -29,14 +29,14 @@ export async function POST(request: NextRequest) {
       user: { client_user_id: userId },
       client_name: 'Debt Tracker',
       access_token: accessToken,
-      additional_consented_products: [Products.Statements],
       country_codes: [CountryCode.Us],
       language: 'en',
-      redirect_uri: process.env.PLAID_OAUTH_REDIRECT_URI,
+      redirect_uri: process.env.PLAID_OAUTH_REDIRECT_URI || undefined,
     });
     return NextResponse.json({ link_token: data.link_token });
   } catch (err) {
-    console.error('update-link-token error:', err);
-    return NextResponse.json({ error: 'Failed to create update token' }, { status: 500 });
+    const plaidError = (err as { response?: { data?: unknown } })?.response?.data;
+    console.error('update-link-token error:', plaidError ?? err);
+    return NextResponse.json({ error: 'Failed to create update token', detail: plaidError }, { status: 500 });
   }
 }

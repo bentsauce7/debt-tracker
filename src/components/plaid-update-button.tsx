@@ -45,11 +45,11 @@ export function PlaidUpdateButton({ itemId, label = 'Enable transactions' }: { i
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ itemId }),
       });
-      if (!res.ok) throw new Error('Failed to get update token');
-      const { link_token } = await res.json();
-      setLinkToken(link_token);
-    } catch {
-      setError('Failed to start update');
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.detail?.error_message ?? body.error ?? 'Failed to get update token');
+      setLinkToken(body.link_token);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to start update');
     } finally {
       setLoading(false);
     }
