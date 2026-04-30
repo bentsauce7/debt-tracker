@@ -121,6 +121,13 @@ export default async function ScenariosPage() {
     string,
     { balance: number; earliestEnd: string; anyDeferred: boolean; monthlyFee: number }
   >();
+  // Separate aggregate covering only deferred-interest purchases — drives the
+  // Promo Deadlines panel (which is specifically about retroactive-interest
+  // deadlines, not general promo balances).
+  const deferredAggregateMap = new Map<
+    string,
+    { balance: number; earliestEnd: string }
+  >();
   for (const p of trackedPromos) {
     if (p.promoEndDate < today) continue;
     const existing = promoAggregateMap.get(p.accountId);
@@ -138,6 +145,19 @@ export default async function ScenariosPage() {
       if (p.promoEndDate < existing.earliestEnd) existing.earliestEnd = p.promoEndDate;
       if (p.isDeferredInterest) existing.anyDeferred = true;
       existing.monthlyFee += monthlyFee;
+    }
+
+    if (p.isDeferredInterest) {
+      const def = deferredAggregateMap.get(p.accountId);
+      if (!def) {
+        deferredAggregateMap.set(p.accountId, {
+          balance: amount,
+          earliestEnd: p.promoEndDate,
+        });
+      } else {
+        def.balance += amount;
+        if (p.promoEndDate < def.earliestEnd) def.earliestEnd = p.promoEndDate;
+      }
     }
   }
 
@@ -198,6 +218,30 @@ export default async function ScenariosPage() {
         ? (aggregate?.anyDeferred ?? override?.isDeferredInterest ?? false)
         : false;
 
+      // Deferred-only fields (drive the Promo Deadlines panel). Prefer
+      // tracked-purchase aggregate; fall back to manual override if it is flagged
+      // as deferred.
+      const deferredAggregate = deferredAggregateMap.get(row.accountId);
+      const deferredEnd =
+        deferredAggregate?.earliestEnd ??
+        (override?.isDeferredInterest && override.promoExpiration && override.promoExpiration >= today
+          ? override.promoExpiration
+          : null);
+      const deferredPromoBalance = deferredAggregate
+        ? deferredAggregate.balance
+        : override?.isDeferredInterest && override.promoBalance
+          ? parseFloat(override.promoBalance)
+          : undefined;
+      const deferredPromoExpiresMonths = deferredEnd
+        ? Math.max(
+            0,
+            Math.round(
+              (new Date(deferredEnd).getTime() - Date.now()) /
+                (1000 * 60 * 60 * 24 * 30.44),
+            ),
+          )
+        : undefined;
+
       return {
         accountId: row.accountId,
         name: row.name,
@@ -212,6 +256,8 @@ export default async function ScenariosPage() {
           ? parseFloat(override.accruedDeferredInterest)
           : undefined,
         monthlyPromoFee: promoActive && aggregate?.monthlyFee ? aggregate.monthlyFee : undefined,
+        deferredPromoBalance,
+        deferredPromoExpiresMonths,
       };
     })
     .filter((a) => a.balance > 0.01)

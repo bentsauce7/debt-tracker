@@ -19,6 +19,12 @@ export type ScenarioAccount = {
   promoBalance?: number;    // specific balance that must be cleared by deadline
   accruedDeferredInterest?: number; // interest at risk if deadline missed
   monthlyPromoFee?: number; // installment-plan fees charged each month during promo
+  // Deferred-only fields, scoped to the deferred-interest portion of an account.
+  // Drive the Promo Deadlines panel; independent of the account-level promo
+  // aggregate (an account can have a deferred Synchrony purchase AND a separate
+  // non-deferred Citi Flex Pay plan with different end dates).
+  deferredPromoBalance?: number;
+  deferredPromoExpiresMonths?: number;
 };
 
 type AccountResult = {
@@ -296,7 +302,7 @@ export function ScenarioCalculator({ accounts }: { accounts: ScenarioAccount[] }
   const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
   const totalMinPayments = accounts.reduce((s, a) => s + a.minPayment, 0);
   const promoAccounts = accounts.filter((a) => a.promoExpiresMonths !== undefined);
-  const deferredAccounts = promoAccounts.filter((a) => a.isDeferredInterest);
+  const deferredAccounts = accounts.filter((a) => a.deferredPromoExpiresMonths !== undefined);
   const totalDeferredAtRisk = deferredAccounts.reduce((s, a) => s + (a.accruedDeferredInterest ?? 0), 0);
 
   return (
@@ -349,10 +355,14 @@ export function ScenarioCalculator({ accounts }: { accounts: ScenarioAccount[] }
               </thead>
               <tbody className="divide-y divide-amber-100">
                 {[...deferredAccounts]
-                  .sort((a, b) => (a.promoExpiresMonths ?? 999) - (b.promoExpiresMonths ?? 999))
+                  .sort(
+                    (a, b) =>
+                      (a.deferredPromoExpiresMonths ?? 999) -
+                      (b.deferredPromoExpiresMonths ?? 999),
+                  )
                   .map((acct) => {
-                    const months = acct.promoExpiresMonths ?? 0;
-                    const promoAmt = acct.promoBalance ?? acct.balance;
+                    const months = acct.deferredPromoExpiresMonths ?? 0;
+                    const promoAmt = acct.deferredPromoBalance ?? acct.balance;
                     const required = months > 0 ? promoAmt / months : promoAmt;
                     const urgent = months <= 2;
                     return (
