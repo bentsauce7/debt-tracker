@@ -113,8 +113,25 @@ export default async function SyncPage() {
           <CardHeader>
             <CardTitle>Statements</CardTitle>
           </CardHeader>
-          <CardContent>
-            <SyncStatementsButton />
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Step 1 — Grant statements access</p>
+              <p className="text-sm text-muted-foreground">
+                Each institution needs one-time authorization to share statement PDFs.
+              </p>
+              <ul className="space-y-2">
+                {plaid.map((item) => (
+                  <li key={item.id} className="flex items-center justify-between gap-4 text-sm">
+                    <span>{item.institutionName ?? item.itemId}</span>
+                    <PlaidUpdateButton itemId={item.id} label="Grant access" />
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="border-t pt-4 space-y-2">
+              <p className="text-sm font-medium">Step 2 — Sync statements</p>
+              <SyncStatementsButton />
+            </div>
           </CardContent>
         </Card>
       )}

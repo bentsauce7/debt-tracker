@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
-import { CountryCode } from 'plaid';
+import { CountryCode, Products } from 'plaid';
 import { db } from '@/db';
 import { plaidItems } from '@/db/schema';
 import { plaidClient } from '@/lib/plaid';
@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
       user: { client_user_id: userId },
       client_name: 'Debt Tracker',
       access_token: accessToken,
+      additional_consented_products: [Products.Statements],
       country_codes: [CountryCode.Us],
       language: 'en',
       redirect_uri: process.env.PLAID_OAUTH_REDIRECT_URI,

@@ -137,7 +137,7 @@ export default async function ConnectPage({
                     institutionName={item.institutionName ?? 'this institution'}
                   />
                 </div>
-                <PlaidUpdateButton itemId={item.id} />
+                <PlaidUpdateButton itemId={item.id} label="Grant statements access" />
               </div>
             ))}
             {mx.map((member) => (
