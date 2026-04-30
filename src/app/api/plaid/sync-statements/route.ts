@@ -70,10 +70,12 @@ export async function POST() {
             const extraction = await extractStatement(pdfBase64);
 
             // Store statement record
+            const statementDate = extraction.statementDate
+              ?? (stmt.month ? `${stmt.year}-${String(stmt.month).padStart(2, '0')}-01` : `${stmt.year}-01-01`);
             await db.insert(statements).values({
               accountId,
               plaidStatementId: stmt.statement_id,
-              statementDate: stmt.month ? `${stmt.year}-${String(stmt.month).padStart(2, '0')}-01` : `${stmt.year}-01-01`,
+              statementDate,
               closingBalance: extraction.closingBalance?.toString() ?? undefined,
               minimumPayment: extraction.minimumPayment?.toString() ?? undefined,
               paymentDueDate: extraction.paymentDueDate ?? undefined,
@@ -108,9 +110,10 @@ export async function POST() {
         }
       }
     } catch (err) {
-      const plaidMsg = (err as { response?: { data?: { error_message?: string; error_code?: string } } })?.response?.data;
-      const msg = plaidMsg
-        ? `${plaidMsg.error_code}: ${plaidMsg.error_message}`
+      const plaidData = (err as { response?: { data?: { error_code?: string; error_message?: string } } })?.response?.data;
+      if (plaidData?.error_code === 'ADDITIONAL_CONSENT_REQUIRED') continue;
+      const msg = plaidData
+        ? `${plaidData.error_code}: ${plaidData.error_message}`
         : (err instanceof Error ? err.message : String(err));
       itemErrors.push(msg);
     }

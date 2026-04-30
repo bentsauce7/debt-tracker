@@ -14,6 +14,7 @@ import { OverrideForm } from './override-form';
 import { PromoPurchasesSection } from './promo-purchases-section';
 import { StatementHistory } from './statement-history';
 import { PromoPurchaseSuggestions } from './promo-purchase-suggestions';
+import { UploadStatementButton } from '@/components/upload-statement-button';
 
 async function getAccount(accountId: string, userId: string) {
   const [account] = await db
@@ -244,16 +245,19 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
         </Card>
       )}
 
-      {accountStatements.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Statement History</CardTitle>
-          </CardHeader>
-          <CardContent>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <CardTitle>Statement History</CardTitle>
+          <UploadStatementButton accountId={account.accountId} />
+        </CardHeader>
+        <CardContent>
+          {accountStatements.length > 0 ? (
             <StatementHistory statements={accountStatements} />
-          </CardContent>
-        </Card>
-      )}
+          ) : (
+            <p className="text-sm text-muted-foreground">No statements yet. Upload a PDF to get started.</p>
+          )}
+        </CardContent>
+      </Card>
 
       <PromoPurchaseSuggestions
         accountId={account.accountId}

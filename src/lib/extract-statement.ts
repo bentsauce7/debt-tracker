@@ -4,6 +4,7 @@ import type { ExtractedApr, ExtractedPromoPurchase } from '@/db/schema';
 const client = new Anthropic();
 
 export type StatementExtraction = {
+  statementDate: string | null;
   closingBalance: number | null;
   minimumPayment: number | null;
   paymentDueDate: string | null;
@@ -15,6 +16,7 @@ const PROMPT = `You are extracting structured financial data from a credit card 
 
 Return a JSON object with exactly this shape:
 {
+  "statementDate": <statement closing/period end date as "YYYY-MM-DD" or null>,
   "closingBalance": <number or null>,
   "minimumPayment": <number or null>,
   "paymentDueDate": <"YYYY-MM-DD" or null>,
@@ -78,6 +80,7 @@ export async function extractStatement(pdfBase64: string): Promise<StatementExtr
   const parsed = JSON.parse(json);
 
   return {
+    statementDate: parsed.statementDate ?? null,
     closingBalance: parsed.closingBalance ?? null,
     minimumPayment: parsed.minimumPayment ?? null,
     paymentDueDate: parsed.paymentDueDate ?? null,
