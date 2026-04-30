@@ -3,15 +3,13 @@ import { desc, eq } from 'drizzle-orm';
 import Link from 'next/link';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { accounts, liabilities, aprs, manualOverrides, plaidItems, mxMembers, promoPurchases, transactions, statements } from '@/db/schema';
+import { accounts, liabilities, aprs, manualOverrides, plaidItems, mxMembers, promoPurchases, statements } from '@/db/schema';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency, formatPercent, formatDate, calcUtilization } from '@/lib/utils';
 import { ArrowLeft } from 'lucide-react';
-import { OverrideForm } from './override-form';
-import { PromoPurchasesSection } from './promo-purchases-section';
 import { StatementHistory } from './statement-history';
 import { PromoPurchaseSuggestions } from './promo-purchase-suggestions';
 import { UploadStatementButton } from '@/components/upload-statement-button';
@@ -31,15 +29,11 @@ async function getAccount(accountId: string, userId: string) {
   const ownerUserId = account.plaid_items?.userId ?? account.mx_members?.userId;
   if (ownerUserId !== userId) return null;
 
-  const [liability, accountAprs, override, purchases, accountTransactions, accountStatements] = await Promise.all([
+  const [liability, accountAprs, override, purchases, accountStatements] = await Promise.all([
     db.select().from(liabilities).where(eq(liabilities.accountId, accountId)).limit(1),
     db.select().from(aprs).where(eq(aprs.accountId, accountId)),
     db.select().from(manualOverrides).where(eq(manualOverrides.accountId, accountId)).limit(1),
     db.select().from(promoPurchases).where(eq(promoPurchases.accountId, accountId)),
-    db.select().from(transactions)
-      .where(eq(transactions.accountId, accountId))
-      .orderBy(desc(transactions.date))
-      .limit(100),
     db.select().from(statements)
       .where(eq(statements.accountId, accountId))
       .orderBy(desc(statements.statementDate))
@@ -53,7 +47,6 @@ async function getAccount(accountId: string, userId: string) {
     aprs: accountAprs,
     override: override[0] ?? null,
     purchases,
-    accountTransactions,
     accountStatements,
   };
 }
@@ -72,7 +65,7 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
 
   if (!data) notFound();
 
-  const { account, institution, liability, aprs: accountAprs, override, purchases, accountTransactions, accountStatements } = data;
+  const { account, institution, liability, aprs: accountAprs, override, purchases, accountStatements } = data;
   const util = calcUtilization(account.currentBalance, account.creditLimit);
   const specialApr = accountAprs.find((a) => a.aprType === 'special');
 
@@ -264,24 +257,6 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
         statements={accountStatements}
         existingPurchases={purchases}
       />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Promotional Purchases</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PromoPurchasesSection accountId={account.accountId} initial={purchases} availableTransactions={accountTransactions} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Manual Overrides</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <OverrideForm accountId={account.accountId} initial={override} />
-        </CardContent>
-      </Card>
 
       <p className="text-xs text-muted-foreground">
         Last synced: {account.lastSyncedAt ? formatDate(account.lastSyncedAt) : 'never'}
