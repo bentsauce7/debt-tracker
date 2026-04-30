@@ -24,46 +24,57 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const ownerUserId = row.plaid_items?.userId ?? row.mx_members?.userId;
   if (ownerUserId !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const formData = await request.formData();
-  const file = formData.get('pdf') as File | null;
-  if (!file) return NextResponse.json({ error: 'No PDF provided' }, { status: 400 });
-
-  const bytes = await file.arrayBuffer();
-  const pdfBase64 = Buffer.from(bytes).toString('base64');
-
-  const extraction = await extractStatement(pdfBase64);
-
-  const statementDate = extraction.statementDate ?? new Date().toISOString().slice(0, 7) + '-01';
-
-  await db.insert(statements).values({
-    accountId,
-    plaidStatementId: `manual_${randomUUID()}`,
-    statementDate,
-    closingBalance: extraction.closingBalance?.toString() ?? undefined,
-    minimumPayment: extraction.minimumPayment?.toString() ?? undefined,
-    paymentDueDate: extraction.paymentDueDate ?? undefined,
-    extractedAprs: extraction.aprs,
-    extractedPromoPurchases: extraction.promoPurchases,
-  });
-
-  if (extraction.aprs.length > 0) {
-    const aprTypeMap: Record<string, string> = {
-      purchase: 'purchase_apr',
-      balance_transfer: 'balance_transfer_apr',
-      cash_advance: 'cash_apr',
-      promotional: 'special',
-    };
-
-    await db.delete(aprs).where(eq(aprs.accountId, accountId));
-    await db.insert(aprs).values(
-      extraction.aprs.map((apr) => ({
-        accountId,
-        aprType: aprTypeMap[apr.type] ?? apr.type,
-        aprPercentage: apr.rate.toString(),
-        balanceSubjectToApr: apr.balance?.toString() ?? undefined,
-      })),
-    );
+  let file: File | null = null;
+  try {
+    const formData = await request.formData();
+    file = formData.get('pdf') as File | null;
+  } catch {
+    return NextResponse.json({ error: 'Failed to parse upload' }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true, statementDate });
+  if (!file) return NextResponse.json({ error: 'No PDF provided' }, { status: 400 });
+
+  try {
+    const bytes = await file.arrayBuffer();
+    const pdfBase64 = Buffer.from(bytes).toString('base64');
+
+    const extraction = await extractStatement(pdfBase64);
+
+    const statementDate = extraction.statementDate ?? new Date().toISOString().slice(0, 7) + '-01';
+
+    await db.insert(statements).values({
+      accountId,
+      plaidStatementId: `manual_${randomUUID()}`,
+      statementDate,
+      closingBalance: extraction.closingBalance?.toString() ?? undefined,
+      minimumPayment: extraction.minimumPayment?.toString() ?? undefined,
+      paymentDueDate: extraction.paymentDueDate ?? undefined,
+      extractedAprs: extraction.aprs,
+      extractedPromoPurchases: extraction.promoPurchases,
+    });
+
+    if (extraction.aprs.length > 0) {
+      const aprTypeMap: Record<string, string> = {
+        purchase: 'purchase_apr',
+        balance_transfer: 'balance_transfer_apr',
+        cash_advance: 'cash_apr',
+        promotional: 'special',
+      };
+
+      await db.delete(aprs).where(eq(aprs.accountId, accountId));
+      await db.insert(aprs).values(
+        extraction.aprs.map((apr) => ({
+          accountId,
+          aprType: aprTypeMap[apr.type] ?? apr.type,
+          aprPercentage: apr.rate.toString(),
+          balanceSubjectToApr: apr.balance?.toString() ?? undefined,
+        })),
+      );
+    }
+
+    return NextResponse.json({ ok: true, statementDate });
+  } catch (err) {
+    console.error('upload-statement error:', err);
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Processing failed' }, { status: 500 });
+  }
 }

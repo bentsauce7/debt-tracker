@@ -22,8 +22,8 @@ export function UploadStatementButton({ accountId, onUploaded }: { accountId: st
         method: 'POST',
         body: form,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Upload failed');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Upload failed (${res.status})`);
       setResult(`Processed — statement date ${formatDate(data.statementDate)}`);
       onUploaded?.();
     } catch (e) {
