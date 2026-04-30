@@ -18,18 +18,21 @@ export type ScenarioAccount = {
   isDeferredInterest?: boolean;
   promoBalance?: number;    // specific balance that must be cleared by deadline
   accruedDeferredInterest?: number; // interest at risk if deadline missed
+  monthlyPromoFee?: number; // installment-plan fees charged each month during promo
 };
 
 type AccountResult = {
   name: string;
   paidOffMonth: number;
   interestPaid: number;
+  feesPaid: number;
   deferredInterestHit?: boolean; // deferred interest was charged at promo expiry
 };
 
 type SimResult = {
   months: number;
   totalInterest: number;
+  totalFees: number;
   accounts: AccountResult[];
 };
 
@@ -49,7 +52,9 @@ function simulate(
     postPromoApr?: number;
     promoExpiresMonths?: number;
     isDeferredInterest?: boolean;
+    monthlyPromoFee?: number;
     interestPaid: number;
+    feesPaid: number;
     deferredInterestAccrued: number; // tracked separately, only charged on expiry if balance > 0
     paidOffMonth: number | null;
     deferredInterestHit: boolean;
@@ -58,6 +63,7 @@ function simulate(
   const state: State[] = accounts.map((a) => ({
     ...a,
     interestPaid: 0,
+    feesPaid: 0,
     deferredInterestAccrued: 0,
     paidOffMonth: null,
     deferredInterestHit: false,
@@ -65,6 +71,7 @@ function simulate(
 
   let month = 0;
   let totalInterest = 0;
+  let totalFees = 0;
   let rollingExtra = extraPayment;
   const MAX_MONTHS = 600;
 
@@ -109,6 +116,16 @@ function simulate(
         acct.balance += interest;
         acct.interestPaid += interest;
         totalInterest += interest;
+      }
+
+      // Installment-plan fees: charged during promo (and the expiry month).
+      // Stop once balance hits zero or promo ends.
+      const promoActiveThisMonth = inPromo || promoExpiredThisMonth;
+      if (promoActiveThisMonth && acct.monthlyPromoFee && acct.balance > 0) {
+        const fee = acct.monthlyPromoFee;
+        acct.balance += fee;
+        acct.feesPaid += fee;
+        totalFees += fee;
       }
     }
 
@@ -162,11 +179,13 @@ function simulate(
   return {
     months: month,
     totalInterest,
+    totalFees,
     accounts: state
       .map((s) => ({
         name: s.name,
         paidOffMonth: s.paidOffMonth ?? month,
         interestPaid: s.interestPaid,
+        feesPaid: s.feesPaid,
         deferredInterestHit: s.deferredInterestHit,
       }))
       .sort((a, b) => a.paidOffMonth - b.paidOffMonth),
@@ -194,7 +213,9 @@ function StrategyCard({
   baseline: SimResult | null;
 }) {
   if (!result) return null;
-  const interestSaved = baseline ? baseline.totalInterest - result.totalInterest : 0;
+  const totalCost = result.totalInterest + result.totalFees;
+  const baselineCost = baseline ? baseline.totalInterest + baseline.totalFees : 0;
+  const costSaved = baseline ? baselineCost - totalCost : 0;
   const monthsSaved = baseline ? baseline.months - result.months : 0;
 
   return (
@@ -213,10 +234,15 @@ function StrategyCard({
             )}
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Total interest</p>
-            <p className="text-2xl font-bold">{formatCurrency(result.totalInterest)}</p>
-            {interestSaved > 0 && (
-              <p className="text-xs text-green-600">{formatCurrency(interestSaved)} saved</p>
+            <p className="text-xs text-muted-foreground">Total cost</p>
+            <p className="text-2xl font-bold">{formatCurrency(totalCost)}</p>
+            {result.totalFees > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {formatCurrency(result.totalInterest)} interest + {formatCurrency(result.totalFees)} plan fees
+              </p>
+            )}
+            {costSaved > 0 && (
+              <p className="text-xs text-green-600">{formatCurrency(costSaved)} saved</p>
             )}
           </div>
         </div>
@@ -224,22 +250,25 @@ function StrategyCard({
         <div className="space-y-1">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Payoff order</p>
           <ol className="space-y-2">
-            {result.accounts.map((acct, i) => (
-              <li key={acct.name} className="flex items-center justify-between text-sm">
-                <span className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground w-4">{i + 1}.</span>
-                  <span className="font-medium truncate max-w-[160px]">{acct.name}</span>
-                  {acct.deferredInterestHit && (
-                    <span title="Deferred interest was charged">
-                      <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
-                    </span>
-                  )}
-                </span>
-                <span className="text-muted-foreground text-xs shrink-0 ml-2">
-                  {formatMonths(acct.paidOffMonth)} · {formatCurrency(acct.interestPaid)}
-                </span>
-              </li>
-            ))}
+            {result.accounts.map((acct, i) => {
+              const cost = acct.interestPaid + acct.feesPaid;
+              return (
+                <li key={acct.name} className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground w-4">{i + 1}.</span>
+                    <span className="font-medium truncate max-w-[160px]">{acct.name}</span>
+                    {acct.deferredInterestHit && (
+                      <span title="Deferred interest was charged">
+                        <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-muted-foreground text-xs shrink-0 ml-2">
+                    {formatMonths(acct.paidOffMonth)} · {formatCurrency(cost)}
+                  </span>
+                </li>
+              );
+            })}
           </ol>
         </div>
       </CardContent>
@@ -286,7 +315,8 @@ export function ScenarioCalculator({ accounts }: { accounts: ScenarioAccount[] }
           <div>
             <p className="text-muted-foreground">Payoff on minimums only</p>
             <p className="text-xl font-bold">
-              {formatMonths(baseline.months)} · {formatCurrency(baseline.totalInterest)} interest
+              {formatMonths(baseline.months)} ·{' '}
+              {formatCurrency(baseline.totalInterest + baseline.totalFees)} cost
             </p>
           </div>
         )}

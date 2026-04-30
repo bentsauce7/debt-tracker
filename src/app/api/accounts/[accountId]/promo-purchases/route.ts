@@ -28,12 +28,31 @@ export async function POST(
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const { description, purchaseAmount, purchaseDate, promoEndDate, isDeferredInterest } =
-    await request.json();
+  const {
+    description,
+    purchaseAmount,
+    purchaseDate,
+    promoEndDate,
+    isDeferredInterest,
+    feeAmount,
+    feeType,
+    feeFrequency,
+  } = await request.json();
 
   if (!purchaseAmount || !promoEndDate) {
     return NextResponse.json({ error: 'purchaseAmount and promoEndDate are required' }, { status: 400 });
   }
+
+  const validFeeTypes = ['fixed', 'percentage'];
+  const validFeeFrequencies = ['monthly', 'quarterly', 'annual', 'one_time'];
+  const normalizedFeeType =
+    feeType && validFeeTypes.includes(feeType) ? feeType : null;
+  const normalizedFeeFrequency =
+    feeFrequency && validFeeFrequencies.includes(feeFrequency) ? feeFrequency : null;
+  const normalizedFeeAmount =
+    feeAmount != null && Number.isFinite(Number(feeAmount)) && normalizedFeeType
+      ? Number(feeAmount).toString()
+      : null;
 
   const [created] = await db
     .insert(promoPurchases)
@@ -44,6 +63,9 @@ export async function POST(
       purchaseDate: purchaseDate || null,
       promoEndDate,
       isDeferredInterest: isDeferredInterest ?? false,
+      feeAmount: normalizedFeeAmount,
+      feeType: normalizedFeeType,
+      feeFrequency: normalizedFeeFrequency,
     })
     .returning();
 

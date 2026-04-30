@@ -65,6 +65,9 @@ export default async function ScenariosPage() {
         purchaseAmount: promoPurchases.purchaseAmount,
         promoEndDate: promoPurchases.promoEndDate,
         isDeferredInterest: promoPurchases.isDeferredInterest,
+        feeAmount: promoPurchases.feeAmount,
+        feeType: promoPurchases.feeType,
+        feeFrequency: promoPurchases.feeFrequency,
       })
       .from(promoPurchases)
       .innerJoin(accounts, eq(accounts.accountId, promoPurchases.accountId))
@@ -73,31 +76,68 @@ export default async function ScenariosPage() {
       .where(userFilter),
   ]);
 
+  function feeToMonthlyDollars(p: {
+    purchaseAmount: string;
+    promoEndDate: string;
+    feeAmount: string | null;
+    feeType: string | null;
+    feeFrequency: string | null;
+  }): number {
+    if (!p.feeAmount || !p.feeType) return 0;
+    const fee = parseFloat(p.feeAmount);
+    if (!Number.isFinite(fee)) return 0;
+    const principal = parseFloat(p.purchaseAmount);
+    const baseFee = p.feeType === 'percentage' ? (fee / 100) * principal : fee;
+    switch (p.feeFrequency) {
+      case 'monthly':
+        return baseFee;
+      case 'quarterly':
+        return baseFee / 3;
+      case 'annual':
+        return baseFee / 12;
+      case 'one_time': {
+        const monthsLeft = Math.max(
+          1,
+          Math.round(
+            (new Date(p.promoEndDate).getTime() - Date.now()) /
+              (1000 * 60 * 60 * 24 * 30.44),
+          ),
+        );
+        return baseFee / monthsLeft;
+      }
+      default:
+        return baseFee; // assume monthly when frequency missing
+    }
+  }
+
   const aprMap = new Map(purchaseAprs.map((a) => [a.accountId, parseFloat(a.apr ?? '0')]));
   // Use the most recent special APR per account (take first if multiple)
   const specialAprMap = new Map(specialAprs.map((a) => [a.accountId, a]));
   const overrideMap = new Map(overrides.map((o) => [o.accountId, o]));
 
   // Aggregate active (not-yet-expired) tracked promo purchases per account:
-  // sum balance, earliest expiration, deferred-interest if any.
+  // sum balance, earliest expiration, deferred-interest if any, monthly plan fees.
   const promoAggregateMap = new Map<
     string,
-    { balance: number; earliestEnd: string; anyDeferred: boolean }
+    { balance: number; earliestEnd: string; anyDeferred: boolean; monthlyFee: number }
   >();
   for (const p of trackedPromos) {
     if (p.promoEndDate < today) continue;
     const existing = promoAggregateMap.get(p.accountId);
     const amount = parseFloat(p.purchaseAmount);
+    const monthlyFee = feeToMonthlyDollars(p);
     if (!existing) {
       promoAggregateMap.set(p.accountId, {
         balance: amount,
         earliestEnd: p.promoEndDate,
         anyDeferred: p.isDeferredInterest,
+        monthlyFee,
       });
     } else {
       existing.balance += amount;
       if (p.promoEndDate < existing.earliestEnd) existing.earliestEnd = p.promoEndDate;
       if (p.isDeferredInterest) existing.anyDeferred = true;
+      existing.monthlyFee += monthlyFee;
     }
   }
 
@@ -171,6 +211,7 @@ export default async function ScenariosPage() {
         accruedDeferredInterest: promoActive && override?.accruedDeferredInterest
           ? parseFloat(override.accruedDeferredInterest)
           : undefined,
+        monthlyPromoFee: promoActive && aggregate?.monthlyFee ? aggregate.monthlyFee : undefined,
       };
     })
     .filter((a) => a.balance > 0.01)

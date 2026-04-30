@@ -21,6 +21,23 @@ type ExistingPurchase = {
 
 type Suggestion = ExtractedPromoPurchase & { statementDate: string };
 
+const FREQUENCY_LABELS: Record<NonNullable<ExtractedPromoPurchase['feeFrequency']>, string> = {
+  monthly: '/mo',
+  quarterly: '/qtr',
+  annual: '/yr',
+  one_time: ' one-time',
+};
+
+function formatPlanFee(s: Suggestion): string | null {
+  if (s.feeAmount == null || !s.feeType) return null;
+  const value =
+    s.feeType === 'percentage'
+      ? `${s.feeAmount}% fee`
+      : `$${s.feeAmount.toFixed(2)} fee`;
+  const cadence = s.feeFrequency ? FREQUENCY_LABELS[s.feeFrequency] : '';
+  return `${value}${cadence}`;
+}
+
 export function PromoPurchaseSuggestions({
   accountId,
   statements,
@@ -77,6 +94,9 @@ export function PromoPurchaseSuggestions({
           purchaseDate: s.purchaseDate ?? null,
           promoEndDate: promoEndDate || s.promoEndDate,
           isDeferredInterest: s.isDeferredInterest,
+          feeAmount: s.feeAmount ?? null,
+          feeType: s.feeType ?? null,
+          feeFrequency: s.feeFrequency ?? null,
         }),
       });
       if (!res.ok) throw new Error();
@@ -116,6 +136,7 @@ export function PromoPurchaseSuggestions({
                       {s.purchaseDate ? ` · ${formatDate(s.purchaseDate)}` : ''}
                       {s.isDeferredInterest ? ' · Deferred interest' : ''}
                       {s.promoEndDate ? ` · Promo ends ${formatDate(s.promoEndDate)}` : ''}
+                      {formatPlanFee(s) ? ` · ${formatPlanFee(s)}` : ''}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       From statement {formatDate(s.statementDate)}

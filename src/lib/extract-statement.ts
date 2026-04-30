@@ -34,7 +34,10 @@ Return a JSON object with exactly this shape:
       "amount": <purchase amount as number>,
       "purchaseDate": <"YYYY-MM-DD" or null>,
       "promoEndDate": <"YYYY-MM-DD" or null>,
-      "isDeferredInterest": <true if "no interest if paid in full" style, false for true 0% promo>
+      "isDeferredInterest": <true if "no interest if paid in full" style, false for true 0% promo>,
+      "feeAmount": <fee value as a number, or null. Dollars if feeType="fixed", percent if "percentage". Null when isDeferredInterest=true or no fee applies>,
+      "feeType": <"fixed" | "percentage" | null>,
+      "feeFrequency": <"monthly" | "quarterly" | "annual" | "one_time" | null>
     }
   ]
 }
@@ -42,8 +45,26 @@ Return a JSON object with exactly this shape:
 Rules:
 - Extract ALL APR types shown on the statement including promotional rates
 - For promotional/deferred interest purchases listed individually on the statement, include each as a separate entry in promoPurchases
-- isDeferredInterest = true for "No Interest if Paid in Full" offers (common on PayPal Credit, Synchrony, etc.)
-- isDeferredInterest = false for true 0% APR promotions
+- Also include bank-branded installment / "pay over time" / promotional financing plans as promoPurchases entries. Common program names to look for:
+  - Citi: "Citi Flex Pay", "Citi Flex Loan", "Flex Plan"
+  - Chase: "My Chase Plan", "Chase Pay Over Time"
+  - American Express: "Plan It", "Pay It Plan It", "Amex Plan"
+  - Wells Fargo: "Purchase Offer", "Balance Transfer Offer", "Special Purchase"
+  - PayPal Credit: "Easy Payments" (6/12/24-month no-interest promos), "Promotional Purchase"
+  - PayPal: "Pay in 4", "Pay Monthly" (BNPL)
+  - Synchrony: "Special Financing", "Promotional Financing", "Equal Payment" / "Equal Pay" plans, "Deferred Interest" plans (used by Lowe's, Ashley, Mattress Firm, and many other Synchrony-issued retail cards)
+  - CareCredit: promotional financing (medical/dental)
+  - Amazon Store Card: "Equal Pay", "Special Financing"
+  Each plan's original purchase amount (or remaining balance if original is not shown), the original purchase date, and the plan end / final payment date should populate amount, purchaseDate, and promoEndDate respectively.
+- isDeferredInterest = true for "No Interest if Paid in Full" / "Deferred Interest" offers — interest accrues from day one and posts retroactively if the balance is not paid by the promo end date. Common on Synchrony "Special Financing" / "Promotional Financing", PayPal Credit "Easy Payments", CareCredit promotional financing, Amazon Store Card "Special Financing", and most retail-store Synchrony cards (Lowe's, Ashley, Mattress Firm, etc.).
+- isDeferredInterest = false for fixed-fee installment plans (Citi Flex Pay/Loan, My Chase Plan, Amex Plan It, Wells Fargo offers, PayPal Pay in 4 / Pay Monthly, "Equal Payment" / "Equal Pay" plans) and for true 0% APR promotions where no retroactive interest applies.
+- For installment / "pay over time" plans (isDeferredInterest=false), extract the plan fee whenever the statement shows one. The fee is usually disclosed near the plan listing and can be either a fixed dollar amount (e.g. "Plan fee: $1.50/month") or a percentage of the original purchase (e.g. "1.72% monthly fee", "Monthly fee rate: 1.72%"). Set feeType="fixed" for dollar amounts and feeType="percentage" for percentages. Set feeFrequency to "monthly", "quarterly", "annual", or "one_time" based on how the statement describes it (default to "monthly" only if the cadence is clearly implied by the per-payment schedule). Examples by issuer:
+  - Citi Flex Pay / Flex Loan: typically a monthly percentage fee of the original purchase (feeType="percentage", feeFrequency="monthly")
+  - My Chase Plan: fixed monthly dollar fee shown explicitly (feeType="fixed", feeFrequency="monthly")
+  - Amex Plan It / Pay It Plan It: fixed monthly dollar fee shown explicitly (feeType="fixed", feeFrequency="monthly")
+  - Wells Fargo offers: may be a one-time setup fee or monthly fee — read the disclosure
+  - "Equal Pay" / "Equal Payment" plans (Amazon, Synchrony retail): often have no plan fee — leave fee fields null
+  If the statement does not disclose a fee, leave feeAmount, feeType, and feeFrequency as null.
 - If a field is not present on the statement, use null
 - Amounts should be positive numbers (no negative signs)
 - Return ONLY the JSON object, no explanation`;

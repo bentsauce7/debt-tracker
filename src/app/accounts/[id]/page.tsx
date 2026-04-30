@@ -277,6 +277,7 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
                   const daysLeft = Math.ceil(
                     (new Date(p.promoEndDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
                   );
+                  const feeLabel = formatStoredFee(p);
                   return (
                     <li key={p.id} className="flex items-start justify-between gap-4 text-sm">
                       <div className="space-y-0.5">
@@ -287,6 +288,7 @@ export default async function AccountDetailPage({ params }: { params: Promise<{ 
                         <p className="text-muted-foreground">
                           {formatCurrency(p.purchaseAmount)}
                           {p.purchaseDate ? ` · purchased ${formatDate(p.purchaseDate)}` : ''}
+                          {feeLabel ? ` · ${feeLabel}` : ''}
                         </p>
                       </div>
                       <div className="text-right shrink-0">
@@ -327,4 +329,27 @@ function Row({ label, value }: { label: string; value: string }) {
       <p className="font-medium">{value}</p>
     </div>
   );
+}
+
+const FEE_FREQUENCY_LABELS: Record<string, string> = {
+  monthly: '/mo',
+  quarterly: '/qtr',
+  annual: '/yr',
+  one_time: ' one-time',
+};
+
+function formatStoredFee(p: {
+  feeAmount: string | null;
+  feeType: string | null;
+  feeFrequency: string | null;
+}): string | null {
+  if (!p.feeAmount || !p.feeType) return null;
+  const amount = parseFloat(p.feeAmount);
+  if (!Number.isFinite(amount)) return null;
+  const value =
+    p.feeType === 'percentage'
+      ? `${amount}% fee`
+      : `$${amount.toFixed(2)} fee`;
+  const cadence = p.feeFrequency ? (FEE_FREQUENCY_LABELS[p.feeFrequency] ?? '') : '';
+  return `${value}${cadence}`;
 }

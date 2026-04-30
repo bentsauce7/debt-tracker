@@ -117,6 +117,9 @@ export const promoPurchases = pgTable('promo_purchases', {
   purchaseDate: date('purchase_date'),
   promoEndDate: date('promo_end_date').notNull(),
   isDeferredInterest: boolean('is_deferred_interest').notNull().default(false),
+  feeAmount: numeric('fee_amount', { precision: 12, scale: 4 }),
+  feeType: text('fee_type'),
+  feeFrequency: text('fee_frequency'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -148,6 +151,9 @@ export type ExtractedPromoPurchase = {
   purchaseDate?: string;
   promoEndDate?: string;
   isDeferredInterest: boolean;
+  feeAmount?: number;
+  feeType?: 'fixed' | 'percentage';
+  feeFrequency?: 'monthly' | 'quarterly' | 'annual' | 'one_time';
 };
 
 export const syncLog = pgTable('sync_log', {
