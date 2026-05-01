@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, inArray } from 'drizzle-orm';
 import crypto from 'crypto';
 import * as jose from 'jose';
 import { db } from '@/db';
@@ -54,9 +54,10 @@ export async function POST(request: NextRequest) {
         const { data } = await plaidClient.transactionsSync({ access_token: accessToken, cursor });
         const { added, modified, removed, next_cursor, has_more } = data;
 
-        if (added.length > 0) {
+        const upsertRows = [...added, ...modified];
+        if (upsertRows.length > 0) {
           await db.insert(transactions).values(
-            added.map((tx) => ({
+            upsertRows.map((tx) => ({
               accountId: tx.account_id,
               transactionId: tx.transaction_id,
               name: tx.name,
@@ -77,18 +78,10 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        for (const tx of modified) {
-          await db.update(transactions).set({
-            name: tx.name,
-            merchantName: tx.merchant_name ?? undefined,
-            amount: tx.amount.toString(),
-            date: tx.date,
-            pending: tx.pending,
-          }).where(eq(transactions.transactionId, tx.transaction_id));
-        }
-
-        for (const tx of removed) {
-          await db.delete(transactions).where(eq(transactions.transactionId, tx.transaction_id));
+        if (removed.length > 0) {
+          await db.delete(transactions).where(
+            inArray(transactions.transactionId, removed.map((r) => r.transaction_id)),
+          );
         }
 
         cursor = next_cursor;
@@ -96,8 +89,8 @@ export async function POST(request: NextRequest) {
       }
 
       await db.update(plaidItems).set({ cursor, updatedAt: new Date() }).where(eq(plaidItems.id, item.id));
-    } catch {
-      // transactions product not enabled — ignore
+    } catch (err) {
+      console.error('plaid webhook TRANSACTIONS sync failed', { itemId: item_id, err });
     }
   }
 
@@ -108,26 +101,28 @@ export async function POST(request: NextRequest) {
         plaidClient.liabilitiesGet({ access_token: accessToken }),
       ]);
 
-      for (const acct of accountsResp.data.accounts) {
-        await db.insert(accounts).values({
-          itemId: item.id,
-          accountId: acct.account_id,
-          name: acct.name,
-          mask: acct.mask ?? undefined,
-          officialName: acct.official_name ?? undefined,
-          type: acct.type,
-          subtype: acct.subtype ?? undefined,
-          currentBalance: acct.balances.current?.toString() ?? undefined,
-          availableBalance: acct.balances.available?.toString() ?? undefined,
-          creditLimit: acct.balances.limit?.toString() ?? undefined,
-          lastSyncedAt: new Date(),
-        }).onConflictDoUpdate({
-          target: accounts.accountId,
-          set: {
+      if (accountsResp.data.accounts.length > 0) {
+        await db.insert(accounts).values(
+          accountsResp.data.accounts.map((acct) => ({
+            itemId: item.id,
+            accountId: acct.account_id,
+            name: acct.name,
+            mask: acct.mask ?? undefined,
+            officialName: acct.official_name ?? undefined,
+            type: acct.type,
+            subtype: acct.subtype ?? undefined,
             currentBalance: acct.balances.current?.toString() ?? undefined,
             availableBalance: acct.balances.available?.toString() ?? undefined,
             creditLimit: acct.balances.limit?.toString() ?? undefined,
             lastSyncedAt: new Date(),
+          })),
+        ).onConflictDoUpdate({
+          target: accounts.accountId,
+          set: {
+            currentBalance: sql`excluded.current_balance`,
+            availableBalance: sql`excluded.available_balance`,
+            creditLimit: sql`excluded.credit_limit`,
+            lastSyncedAt: sql`excluded.last_synced_at`,
           },
         });
       }
@@ -136,7 +131,7 @@ export async function POST(request: NextRequest) {
         if (!credit.account_id) continue;
         const accountId = credit.account_id;
 
-        await db.insert(liabilities).values({
+        const liabilityValues = {
           accountId,
           lastStatementBalance: credit.last_statement_balance?.toString() ?? undefined,
           lastStatementIssueDate: credit.last_statement_issue_date ?? undefined,
@@ -144,26 +139,19 @@ export async function POST(request: NextRequest) {
           nextPaymentDueDate: credit.next_payment_due_date ?? undefined,
           lastPaymentAmount: credit.last_payment_amount?.toString() ?? undefined,
           lastPaymentDate: credit.last_payment_date ?? undefined,
-        }).onConflictDoUpdate({
-          target: liabilities.accountId,
-          set: {
-            lastStatementBalance: credit.last_statement_balance?.toString() ?? undefined,
-            lastStatementIssueDate: credit.last_statement_issue_date ?? undefined,
-            minimumPaymentAmount: credit.minimum_payment_amount?.toString() ?? undefined,
-            nextPaymentDueDate: credit.next_payment_due_date ?? undefined,
-            lastPaymentAmount: credit.last_payment_amount?.toString() ?? undefined,
-            lastPaymentDate: credit.last_payment_date ?? undefined,
-          },
-        });
+        };
 
-        await db.update(accounts)
+        const liabilityUpsert = db.insert(liabilities).values(liabilityValues).onConflictDoUpdate({
+          target: liabilities.accountId,
+          set: liabilityValues,
+        });
+        const overdueUpdate = db.update(accounts)
           .set({ isOverdue: credit.is_overdue ?? false })
           .where(eq(accounts.accountId, accountId));
-
-        await db.delete(aprs).where(eq(aprs.accountId, accountId));
+        const aprDelete = db.delete(aprs).where(eq(aprs.accountId, accountId));
 
         if (credit.aprs && credit.aprs.length > 0) {
-          await db.insert(aprs).values(
+          const aprInsert = db.insert(aprs).values(
             credit.aprs.map((apr) => ({
               accountId,
               aprPercentage: apr.apr_percentage?.toString() ?? undefined,
@@ -172,10 +160,13 @@ export async function POST(request: NextRequest) {
               interestChargeAmount: apr.interest_charge_amount?.toString() ?? undefined,
             })),
           );
+          await db.batch([liabilityUpsert, overdueUpdate, aprDelete, aprInsert]);
+        } else {
+          await db.batch([liabilityUpsert, overdueUpdate, aprDelete]);
         }
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error('plaid webhook LIABILITIES update failed', { itemId: item_id, err });
     }
   }
 

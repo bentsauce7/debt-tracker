@@ -74,8 +74,15 @@ Rules:
 
 export async function extractStatement(pdfBase64: string): Promise<StatementExtraction> {
   const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: 'claude-haiku-4-5',
     max_tokens: 8192,
+    system: [
+      {
+        type: 'text',
+        text: PROMPT,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
     messages: [
       {
         role: 'user',
@@ -90,7 +97,7 @@ export async function extractStatement(pdfBase64: string): Promise<StatementExtr
           },
           {
             type: 'text',
-            text: PROMPT,
+            text: 'Extract structured data from the attached statement following the rules in the system prompt. Return ONLY the JSON object.',
           },
         ],
       },
