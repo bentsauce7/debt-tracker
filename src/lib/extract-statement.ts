@@ -46,6 +46,7 @@ Return a JSON object with exactly this shape:
 Rules:
 - Extract ALL APR types shown on the statement including promotional rates
 - For promotional/deferred interest purchases listed individually on the statement, include each as a separate entry in promoPurchases
+- Skip any promotional purchase row whose remaining balance is $0 (or $0.00). These are already-paid-off plans (e.g. Citi Flex Plan 4, 6, 7, 8 listed with a $0 balance) — do not include them in promoPurchases at all.
 - Also include bank-branded installment / "pay over time" / promotional financing plans as promoPurchases entries. Common program names to look for:
   - Citi: "Citi Flex Pay", "Citi Flex Loan", "Flex Plan"
   - Chase: "My Chase Plan", "Chase Pay Over Time"
@@ -56,7 +57,7 @@ Rules:
   - Synchrony: "Special Financing", "Promotional Financing", "Equal Payment" / "Equal Pay" plans, "Deferred Interest" plans (used by Lowe's, Ashley, Mattress Firm, and many other Synchrony-issued retail cards)
   - CareCredit: promotional financing (medical/dental)
   - Amazon Store Card: "Equal Pay", "Special Financing"
-  Each plan's original purchase amount (or remaining balance if original is not shown), the original purchase date, and the plan end / final payment date should populate amount, purchaseDate, and promoEndDate respectively.
+  For each plan, set amount = the remaining balance still owed on that plan (NOT the original purchase price; when the statement shows both, always use the still-owed balance). purchaseDate = the original purchase date. promoEndDate = the plan end / final payment date.
 - isDeferredInterest = true for "No Interest if Paid in Full" / "Deferred Interest" offers — interest accrues from day one and posts retroactively if the balance is not paid by the promo end date. Common on Synchrony "Special Financing" / "Promotional Financing", PayPal Credit "Easy Payments", CareCredit promotional financing, Amazon Store Card "Special Financing", and most retail-store Synchrony cards (Lowe's, Ashley, Mattress Firm, etc.).
 - isDeferredInterest = false for fixed-fee installment plans (Citi Flex Pay/Loan, My Chase Plan, Amex Plan It, Wells Fargo offers, PayPal Pay in 4 / Pay Monthly, "Equal Payment" / "Equal Pay" plans) and for true 0% APR promotions where no retroactive interest applies.
 - For deferred-interest plans, look for the per-purchase accrued deferred interest amount and put it in accruedDeferredInterest. PayPal Credit and Synchrony statements typically list this in the Promotional Purchase details section under labels such as "Accrued Interest Charges", "Deferred Interest Charges Accrued", or "Accrued interest if not paid in full". The corresponding total is often labeled "Total Accrued Deferred Interest" or "Total Accrued Interest Charges" — DO NOT use the total here; use the per-purchase row's accrued figure. Leave this field null when isDeferredInterest=false or when the statement does not list a per-purchase accrued amount.
@@ -114,12 +115,21 @@ export async function extractStatement(pdfBase64: string): Promise<StatementExtr
     throw new Error('Failed to parse extracted statement data');
   }
 
+  // Defensive: drop promo rows with no remaining balance (paid-off plans
+  // sometimes still appear in the model output despite the prompt rule).
+  const rawPromoPurchases: ExtractedPromoPurchase[] = Array.isArray(parsed.promoPurchases)
+    ? parsed.promoPurchases
+    : [];
+  const promoPurchasesFiltered = rawPromoPurchases.filter(
+    (p) => Number.isFinite(p?.amount) && Number(p.amount) > 0,
+  );
+
   return {
     statementDate: parsed.statementDate ?? null,
     closingBalance: parsed.closingBalance ?? null,
     minimumPayment: parsed.minimumPayment ?? null,
     paymentDueDate: parsed.paymentDueDate ?? null,
     aprs: Array.isArray(parsed.aprs) ? parsed.aprs : [],
-    promoPurchases: Array.isArray(parsed.promoPurchases) ? parsed.promoPurchases : [],
+    promoPurchases: promoPurchasesFiltered,
   };
 }

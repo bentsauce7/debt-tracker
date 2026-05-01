@@ -21,16 +21,19 @@ export type ScenarioAccount = {
   monthlyPromoFee?: number; // installment-plan fees charged each month during promo
 };
 
-export type DeferredDeadline = {
+export type PromoDeadline = {
   accountId: string;
   accountName: string;
   description: string;
   balance: number;
   promoEndDate: string;
   expiresMonths: number;
-  // null when the purchase has no purchaseDate (statement didn't disclose one
-  // and we can't compute interest accrued so far).
+  isDeferredInterest: boolean;
+  // For deferred-interest plans only. Null when the statement didn't disclose a
+  // per-purchase accrued figure and no purchaseDate is available to estimate.
   accruedInterest: number | null;
+  // For non-deferred installment plans only. Monthly plan fee in dollars.
+  monthlyFee: number | null;
 };
 
 type AccountResult = {
@@ -290,10 +293,10 @@ function StrategyCard({
 
 export function ScenarioCalculator({
   accounts,
-  deferredDeadlines = [],
+  promoDeadlines = [],
 }: {
   accounts: ScenarioAccount[];
-  deferredDeadlines?: DeferredDeadline[];
+  promoDeadlines?: PromoDeadline[];
 }) {
   const [extra, setExtra] = useState('');
   const extraPayment = Math.max(0, parseFloat(extra) || 0);
@@ -314,15 +317,24 @@ export function ScenarioCalculator({
   const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
   const totalMinPayments = accounts.reduce((s, a) => s + a.minPayment, 0);
   const promoAccounts = accounts.filter((a) => a.promoExpiresMonths !== undefined);
-  // Limit the panel to imminent deadlines: this month and next month only.
-  // Further-out cohorts are kept in the database but suppressed from this
-  // panel to avoid clogging the page.
-  const visibleDeadlines = deferredDeadlines.filter((d) => d.expiresMonths <= 1);
-  const hiddenDeadlineCount = deferredDeadlines.length - visibleDeadlines.length;
-  const totalDeferredAtRisk = visibleDeadlines.reduce(
+  // Limit the panels to imminent deadlines: this month and next month only.
+  // Further-out cohorts are kept in the database but suppressed from these
+  // panels to avoid clogging the page.
+  const visibleDeferred = promoDeadlines.filter(
+    (d) => d.isDeferredInterest && d.expiresMonths <= 1,
+  );
+  const hiddenDeferredCount =
+    promoDeadlines.filter((d) => d.isDeferredInterest).length - visibleDeferred.length;
+  const totalDeferredAtRisk = visibleDeferred.reduce(
     (s, d) => s + (d.accruedInterest ?? 0),
     0,
   );
+
+  const visiblePlans = promoDeadlines.filter(
+    (d) => !d.isDeferredInterest && d.expiresMonths <= 1,
+  );
+  const hiddenPlanCount =
+    promoDeadlines.filter((d) => !d.isDeferredInterest).length - visiblePlans.length;
 
   return (
     <div className="space-y-8">
@@ -347,8 +359,8 @@ export function ScenarioCalculator({
         )}
       </div>
 
-      {/* Promo Deadlines panel — one row per active deferred-interest purchase */}
-      {visibleDeadlines.length > 0 && (
+      {/* Promo Deadlines panel — deferred-interest purchases (retroactive interest risk) */}
+      {visibleDeferred.length > 0 && (
         <Card className="border-amber-200 bg-amber-50/50">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base text-amber-800">
@@ -373,7 +385,7 @@ export function ScenarioCalculator({
                 </tr>
               </thead>
               <tbody className="divide-y divide-amber-100">
-                {visibleDeadlines.map((d, i) => {
+                {visibleDeferred.map((d, i) => {
                   const months = d.expiresMonths;
                   const required = months > 0 ? d.balance / months : d.balance;
                   const urgent = months <= 2;
@@ -409,8 +421,68 @@ export function ScenarioCalculator({
             </table>
             <p className="text-xs text-amber-700 mt-3">
               Each row is a single deferred-interest purchase. Pay at least the required monthly amount on each before its deadline to avoid having all accrued interest charged retroactively.
-              {hiddenDeadlineCount > 0 &&
-                ` ${hiddenDeadlineCount} additional deferred ${hiddenDeadlineCount === 1 ? 'deadline is' : 'deadlines are'} more than a month away and not shown here.`}
+              {hiddenDeferredCount > 0 &&
+                ` ${hiddenDeferredCount} additional deferred ${hiddenDeferredCount === 1 ? 'deadline is' : 'deadlines are'} more than a month away and not shown here.`}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Plan Deadlines panel — installment / pay-over-time plans (no retroactive interest, but plan ends) */}
+      {visiblePlans.length > 0 && (
+        <Card className="border-blue-200 bg-blue-50/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base text-blue-800">
+              <Clock className="h-4 w-4" />
+              Plan Deadlines
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-blue-700 border-b border-blue-200">
+                  <th className="text-left pb-2 font-medium">Plan</th>
+                  <th className="text-right pb-2 font-medium">Balance</th>
+                  <th className="text-right pb-2 font-medium">Monthly fee</th>
+                  <th className="text-right pb-2 font-medium">Deadline</th>
+                  <th className="text-right pb-2 font-medium">Need/mo</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-blue-100">
+                {visiblePlans.map((d, i) => {
+                  const months = d.expiresMonths;
+                  const required = months > 0 ? d.balance / months : d.balance;
+                  return (
+                    <tr key={`${d.accountId}-${d.promoEndDate}-${i}`} className="text-blue-900">
+                      <td className="py-2 font-medium">
+                        <div>{d.accountName}</div>
+                        <div className="text-xs font-normal opacity-80 truncate max-w-[280px]">
+                          {d.description}
+                        </div>
+                      </td>
+                      <td className="py-2 text-right font-mono">{formatCurrency(d.balance)}</td>
+                      <td className="py-2 text-right font-mono">
+                        {d.monthlyFee != null ? `${formatCurrency(d.monthlyFee)}/mo` : '—'}
+                      </td>
+                      <td className="py-2 text-right">
+                        {months === 0 ? (
+                          <span className="font-semibold">This month</span>
+                        ) : (
+                          `${months}mo`
+                        )}
+                      </td>
+                      <td className="py-2 text-right font-mono font-semibold">
+                        {formatCurrency(required)}/mo
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <p className="text-xs text-blue-700 mt-3">
+              Installment / pay-over-time plans. After the plan end date, any remaining balance rolls into the regular purchase APR — no retroactive interest charge.
+              {hiddenPlanCount > 0 &&
+                ` ${hiddenPlanCount} additional plan ${hiddenPlanCount === 1 ? 'deadline is' : 'deadlines are'} more than a month away and not shown here.`}
             </p>
           </CardContent>
         </Card>

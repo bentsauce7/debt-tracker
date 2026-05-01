@@ -2,7 +2,7 @@ import { and, eq, or } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
 import { accounts, liabilities, aprs, manualOverrides, plaidItems, mxMembers, promoPurchases } from '@/db/schema';
-import { ScenarioCalculator, type ScenarioAccount, type DeferredDeadline } from '@/components/scenario-calculator';
+import { ScenarioCalculator, type ScenarioAccount, type PromoDeadline } from '@/components/scenario-calculator';
 
 export default async function ScenariosPage() {
   const { userId } = await auth();
@@ -233,34 +233,38 @@ export default async function ScenariosPage() {
 
   const accountNameById = new Map(creditRows.map((r) => [r.accountId, r.name]));
 
-  // Flat per-purchase list of active deferred-interest deadlines. Each tracked
-  // deferred purchase becomes its own row in the Promo Deadlines panel; sorted
-  // by deadline so the most urgent appears first.
-  const deferredDeadlines: DeferredDeadline[] = trackedPromos
-    .filter((p) => p.isDeferredInterest && p.promoEndDate >= today)
+  // Flat per-purchase list of active promo deadlines (deferred + installment).
+  // Calculator splits into two panels by isDeferredInterest. Deferred rows
+  // surface accrued interest at risk; installment rows surface the monthly
+  // plan fee. Sorted by deadline so the most urgent appears first.
+  const promoDeadlines: PromoDeadline[] = trackedPromos
+    .filter((p) => p.promoEndDate >= today)
     .map((p) => {
       const accountName = accountNameById.get(p.accountId) ?? '';
       const balance = parseFloat(p.purchaseAmount);
       const purchaseAprPct = aprMap.get(p.accountId) ?? 0;
-      // Prefer the figure extracted from the statement (real per-purchase
-      // accrued deferred interest, with the issuer's deferred-rate
-      // compounding). Fall back to a coarse estimate based on the account's
-      // purchase APR when the statement didn't disclose a per-purchase value.
-      const monthsElapsed = p.purchaseDate
-        ? Math.max(
+
+      // Per-purchase accrued deferred interest:
+      //   1) statement value when the extractor recorded one
+      //   2) coarse estimate (balance × purchase APR × months_since_purchase)
+      //   3) null when neither is available
+      // Only meaningful for deferred-interest plans.
+      let accruedInterest: number | null = null;
+      if (p.isDeferredInterest) {
+        if (p.accruedDeferredInterest) {
+          accruedInterest = parseFloat(p.accruedDeferredInterest);
+        } else if (p.purchaseDate && purchaseAprPct > 0) {
+          const monthsElapsed = Math.max(
             0,
             (Date.now() - new Date(p.purchaseDate).getTime()) /
               (1000 * 60 * 60 * 24 * 30.44),
-          )
-        : 0;
-      const storedAccrued = p.accruedDeferredInterest
-        ? parseFloat(p.accruedDeferredInterest)
-        : null;
-      const computedAccrued =
-        p.purchaseDate && purchaseAprPct > 0
-          ? balance * (purchaseAprPct / 100) * (monthsElapsed / 12)
-          : null;
-      const accruedInterest = storedAccrued ?? computedAccrued;
+          );
+          accruedInterest = balance * (purchaseAprPct / 100) * (monthsElapsed / 12);
+        }
+      }
+
+      const monthlyFee = !p.isDeferredInterest ? feeToMonthlyDollars(p) : 0;
+
       const expiresMonths = Math.max(
         0,
         Math.round(
@@ -275,7 +279,9 @@ export default async function ScenariosPage() {
         balance,
         promoEndDate: p.promoEndDate,
         expiresMonths,
+        isDeferredInterest: p.isDeferredInterest,
         accruedInterest,
+        monthlyFee: monthlyFee > 0 ? monthlyFee : null,
       };
     })
     .sort((a, b) => a.promoEndDate.localeCompare(b.promoEndDate));
@@ -290,7 +296,7 @@ export default async function ScenariosPage() {
       </div>
       <ScenarioCalculator
         accounts={scenarioAccounts}
-        deferredDeadlines={deferredDeadlines}
+        promoDeadlines={promoDeadlines}
       />
     </div>
   );

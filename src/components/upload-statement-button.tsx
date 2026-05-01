@@ -1,12 +1,14 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/utils';
 
 export function UploadStatementButton({ accountId, onUploaded }: { accountId: string; onUploaded?: () => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +28,7 @@ export function UploadStatementButton({ accountId, onUploaded }: { accountId: st
       if (!res.ok) throw new Error(data.error ?? `Upload failed (${res.status})`);
       setResult(`Processed — statement date ${formatDate(data.statementDate)}`);
       onUploaded?.();
+      router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Upload failed');
     } finally {
