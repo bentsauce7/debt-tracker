@@ -314,7 +314,12 @@ export function ScenarioCalculator({
   const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
   const totalMinPayments = accounts.reduce((s, a) => s + a.minPayment, 0);
   const promoAccounts = accounts.filter((a) => a.promoExpiresMonths !== undefined);
-  const totalDeferredAtRisk = deferredDeadlines.reduce(
+  // Limit the panel to imminent deadlines: this month and next month only.
+  // Further-out cohorts are kept in the database but suppressed from this
+  // panel to avoid clogging the page.
+  const visibleDeadlines = deferredDeadlines.filter((d) => d.expiresMonths <= 1);
+  const hiddenDeadlineCount = deferredDeadlines.length - visibleDeadlines.length;
+  const totalDeferredAtRisk = visibleDeadlines.reduce(
     (s, d) => s + (d.accruedInterest ?? 0),
     0,
   );
@@ -343,7 +348,7 @@ export function ScenarioCalculator({
       </div>
 
       {/* Promo Deadlines panel — one row per active deferred-interest purchase */}
-      {deferredDeadlines.length > 0 && (
+      {visibleDeadlines.length > 0 && (
         <Card className="border-amber-200 bg-amber-50/50">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base text-amber-800">
@@ -368,7 +373,7 @@ export function ScenarioCalculator({
                 </tr>
               </thead>
               <tbody className="divide-y divide-amber-100">
-                {deferredDeadlines.map((d, i) => {
+                {visibleDeadlines.map((d, i) => {
                   const months = d.expiresMonths;
                   const required = months > 0 ? d.balance / months : d.balance;
                   const urgent = months <= 2;
@@ -404,6 +409,8 @@ export function ScenarioCalculator({
             </table>
             <p className="text-xs text-amber-700 mt-3">
               Each row is a single deferred-interest purchase. Pay at least the required monthly amount on each before its deadline to avoid having all accrued interest charged retroactively.
+              {hiddenDeadlineCount > 0 &&
+                ` ${hiddenDeadlineCount} additional deferred ${hiddenDeadlineCount === 1 ? 'deadline is' : 'deadlines are'} more than a month away and not shown here.`}
             </p>
           </CardContent>
         </Card>
