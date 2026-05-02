@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { accounts, plaidItems, mxMembers, promoPurchases } from '@/db/schema';
+import { promoPurchases } from '@/db/schema';
+import { ownsAccount } from '@/lib/account-auth';
 
 export async function DELETE(
   _request: NextRequest,
@@ -19,17 +20,7 @@ export async function DELETE(
     .where(eq(promoPurchases.id, id))
     .limit(1);
 
-  if (!purchase) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-
-  const [account] = await db
-    .select({ plaidUserId: plaidItems.userId, mxUserId: mxMembers.userId })
-    .from(accounts)
-    .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
-    .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
-    .where(eq(accounts.accountId, purchase.accountId))
-    .limit(1);
-
-  if (!account || (account.plaidUserId !== userId && account.mxUserId !== userId)) {
+  if (!purchase || !(await ownsAccount(purchase.accountId, userId))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 

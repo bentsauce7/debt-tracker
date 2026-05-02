@@ -104,6 +104,13 @@ export async function extractStatement(pdfBase64: string): Promise<StatementExtr
     ],
   });
 
+  console.log('extract-statement usage', {
+    cacheCreate: response.usage.cache_creation_input_tokens,
+    cacheRead: response.usage.cache_read_input_tokens,
+    input: response.usage.input_tokens,
+    output: response.usage.output_tokens,
+  });
+
   if (response.stop_reason === 'max_tokens') {
     throw new Error('Statement too large to extract — model output was truncated');
   }

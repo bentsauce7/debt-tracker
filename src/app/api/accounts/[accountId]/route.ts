@@ -1,8 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
+import { z } from 'zod';
 import { db } from '@/db';
-import { accounts, manualOverrides, plaidItems, mxMembers } from '@/db/schema';
+import { manualOverrides } from '@/db/schema';
+import { ownsAccount } from '@/lib/account-auth';
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD');
+const numericLike = z.union([z.number(), z.string()]).refine(
+  (v) => Number.isFinite(Number(v)),
+  { message: 'must be a finite number' },
+);
+
+const ManualOverrideSchema = z.object({
+  promoExpirationDate: isoDate.nullish(),
+  isDeferredInterest: z.boolean().optional(),
+  promoAprPercentage: numericLike.nullish(),
+  promoBalance: numericLike.nullish(),
+  accruedDeferredInterest: numericLike.nullish(),
+  notes: z.string().max(2000).nullish(),
+});
 
 export async function PATCH(
   request: NextRequest,
@@ -12,45 +28,32 @@ export async function PATCH(
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { accountId } = await params;
-
-  const [owner] = await db
-    .select({ plaidUserId: plaidItems.userId, mxUserId: mxMembers.userId })
-    .from(accounts)
-    .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
-    .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
-    .where(eq(accounts.accountId, accountId))
-    .limit(1);
-
-  if (!owner || (owner.plaidUserId !== userId && owner.mxUserId !== userId)) {
+  if (!(await ownsAccount(accountId, userId))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const body = await request.json();
+  const parsed = ManualOverrideSchema.safeParse(await request.json());
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Invalid body', issues: parsed.error.issues }, { status: 400 });
+  }
+  const { promoExpirationDate, isDeferredInterest, promoAprPercentage, promoBalance, accruedDeferredInterest, notes } = parsed.data;
 
-  const { promoExpirationDate, isDeferredInterest, promoAprPercentage, promoBalance, accruedDeferredInterest, notes } = body;
+  const values = {
+    accountId,
+    promoExpirationDate: promoExpirationDate ?? null,
+    isDeferredInterest: isDeferredInterest ?? false,
+    promoAprPercentage: promoAprPercentage != null ? Number(promoAprPercentage).toString() : null,
+    promoBalance: promoBalance != null ? Number(promoBalance).toString() : null,
+    accruedDeferredInterest: accruedDeferredInterest != null ? Number(accruedDeferredInterest).toString() : null,
+    notes: notes ?? null,
+  };
 
   await db
     .insert(manualOverrides)
-    .values({
-      accountId,
-      promoExpirationDate: promoExpirationDate ?? null,
-      isDeferredInterest: isDeferredInterest ?? false,
-      promoAprPercentage: promoAprPercentage?.toString() ?? null,
-      promoBalance: promoBalance?.toString() ?? null,
-      accruedDeferredInterest: accruedDeferredInterest?.toString() ?? null,
-      notes: notes ?? null,
-    })
+    .values(values)
     .onConflictDoUpdate({
       target: manualOverrides.accountId,
-      set: {
-        promoExpirationDate: promoExpirationDate ?? null,
-        isDeferredInterest: isDeferredInterest ?? false,
-        promoAprPercentage: promoAprPercentage?.toString() ?? null,
-        promoBalance: promoBalance?.toString() ?? null,
-        accruedDeferredInterest: accruedDeferredInterest?.toString() ?? null,
-        notes: notes ?? null,
-        updatedAt: new Date(),
-      },
+      set: { ...values, updatedAt: new Date() },
     });
 
   return NextResponse.json({ success: true });

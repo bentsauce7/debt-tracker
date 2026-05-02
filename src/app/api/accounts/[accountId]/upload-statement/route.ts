@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { accounts, aprs, statements, plaidItems, mxMembers } from '@/db/schema';
+import { aprs, statements } from '@/db/schema';
+import { ownsAccount } from '@/lib/account-auth';
 import { extractStatement } from '@/lib/extract-statement';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ accountId: string }> }) {
@@ -11,18 +12,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { accountId } = await params;
-
-  const [row] = await db
-    .select()
-    .from(accounts)
-    .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
-    .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
-    .where(eq(accounts.accountId, accountId))
-    .limit(1);
-
-  if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const ownerUserId = row.plaid_items?.userId ?? row.mx_members?.userId;
-  if (ownerUserId !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!(await ownsAccount(accountId, userId))) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
 
   let file: File | null = null;
   try {
@@ -40,7 +32,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const extraction = await extractStatement(pdfBase64);
 
-    const statementDate = extraction.statementDate ?? new Date().toISOString().slice(0, 7) + '-01';
+    if (!extraction.statementDate) {
+      return NextResponse.json(
+        { error: 'Could not detect a statement date in the PDF. Please re-upload a clearer copy.' },
+        { status: 422 },
+      );
+    }
+    const statementDate = extraction.statementDate;
 
     await db.insert(statements).values({
       accountId,
@@ -61,15 +59,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         promotional: 'special',
       };
 
-      await db.delete(aprs).where(eq(aprs.accountId, accountId));
-      await db.insert(aprs).values(
-        extraction.aprs.map((apr) => ({
-          accountId,
-          aprType: aprTypeMap[apr.type] ?? apr.type,
-          aprPercentage: apr.rate.toString(),
-          balanceSubjectToApr: apr.balance?.toString() ?? undefined,
-        })),
+      const mappedRows = extraction.aprs.map((apr) => ({
+        accountId,
+        aprType: aprTypeMap[apr.type] ?? apr.type,
+        aprPercentage: apr.rate.toString(),
+        balanceSubjectToApr: apr.balance?.toString() ?? undefined,
+      }));
+      const extractedTypes = [...new Set(mappedRows.map((r) => r.aprType))];
+
+      await db.delete(aprs).where(
+        and(eq(aprs.accountId, accountId), inArray(aprs.aprType, extractedTypes)),
       );
+      await db.insert(aprs).values(mappedRows);
     }
 
     return NextResponse.json({ ok: true, statementDate });

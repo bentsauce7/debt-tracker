@@ -30,7 +30,8 @@
     "react-dom": "^19.0.0",
     "react-plaid-link": "^3.6.0",
     "tailwind-merge": "^2.5.5",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "zod": "^4.4.2"
   },
   "devDependencies": {
     "@types/node": "^22",
