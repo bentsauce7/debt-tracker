@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
 import { cn } from '@/lib/utils';
 import { CreditCard, LayoutDashboard, Link2, RefreshCw, TrendingDown } from 'lucide-react';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 const links = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -36,7 +37,10 @@ export function Nav() {
             </Link>
           ))}
         </div>
-        <UserButton />
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <UserButton />
+        </div>
       </div>
     </nav>
   );

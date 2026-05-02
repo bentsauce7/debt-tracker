@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -14,19 +14,37 @@ export function SyncStatementsButton() {
   const [aggProcessed, setAggProcessed] = useState(0);
   const [aggErrors, setAggErrors] = useState<{ institution: string; errors: string[] }[]>([]);
   const [done, setDone] = useState<boolean | null>(null);
+  const [moreRemaining, setMoreRemaining] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
   async function handleClick() {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setBatchCount(0);
     setAggProcessed(0);
     setAggErrors([]);
     setDone(null);
+    setMoreRemaining(false);
     setError(null);
 
+    let exhaustedBatches = true;
     try {
       for (let i = 0; i < MAX_BATCHES; i++) {
-        const res = await fetch('/api/plaid/sync-statements', { method: 'POST' });
+        const res = await fetch('/api/plaid/sync-statements', {
+          method: 'POST',
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error('Failed');
         const data: { results: Result[]; done: boolean } = await res.json();
 
@@ -39,16 +57,17 @@ export function SyncStatementsButton() {
         setAggProcessed((p) => p + batchProcessed);
         setAggErrors((e) => [...e, ...batchErrors]);
 
-        if (data.done) {
+        if (data.done || batchProcessed === 0) {
           setDone(true);
-          break;
-        }
-        if (batchProcessed === 0) {
-          setDone(true);
+          exhaustedBatches = false;
           break;
         }
       }
-    } catch {
+      if (exhaustedBatches) {
+        setMoreRemaining(true);
+      }
+    } catch (e) {
+      if ((e as { name?: string })?.name === 'AbortError') return;
       setError('Failed to sync statements');
     } finally {
       setLoading(false);
@@ -66,14 +85,17 @@ export function SyncStatementsButton() {
         <FileText className="h-4 w-4" />
         {loading
           ? `Processing… (${aggProcessed} done${batchCount > 0 ? `, batch ${batchCount}` : ''})`
-          : 'Sync statements'}
+          : moreRemaining
+            ? 'Continue syncing'
+            : 'Sync statements'}
       </Button>
-      {(loading || done !== null) && (
+      {(loading || done !== null || moreRemaining) && (
         <div className="text-sm space-y-1">
           <p className="text-green-700 dark:text-green-400">
             {aggProcessed} new statement{aggProcessed !== 1 ? 's' : ''} processed
             {totalErrors > 0 ? ` · ${totalErrors} error${totalErrors !== 1 ? 's' : ''}` : ''}
             {done === true ? ' · complete' : ''}
+            {moreRemaining ? ' · more available, click to continue' : ''}
           </p>
           {aggErrors.map((r, idx) => (
             <div key={`${r.institution}-${idx}`}>
