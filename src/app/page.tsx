@@ -1,8 +1,8 @@
 import Link from 'next/link';
-import { and, eq, desc, or } from 'drizzle-orm';
+import { and, eq, desc } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { accounts, liabilities, aprs, syncLog, plaidItems, mxMembers } from '@/db/schema';
+import { accounts, liabilities, aprs, syncLog } from '@/db/schema';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, formatPercent, formatDate } from '@/lib/utils';
@@ -20,18 +20,14 @@ async function getDashboardMetrics(userId: string) {
         nextPaymentDueDate: liabilities.nextPaymentDueDate,
       })
       .from(accounts)
-      .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
-      .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
       .leftJoin(liabilities, eq(liabilities.accountId, accounts.accountId))
-      .where(and(eq(accounts.type, 'credit'), or(eq(plaidItems.userId, userId), eq(mxMembers.userId, userId)))),
+      .where(and(eq(accounts.type, 'credit'), eq(accounts.userId, userId))),
 
     db
       .select({ accountId: aprs.accountId, aprPercentage: aprs.aprPercentage })
       .from(aprs)
       .innerJoin(accounts, eq(accounts.accountId, aprs.accountId))
-      .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
-      .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
-      .where(and(eq(aprs.aprType, 'purchase_apr'), or(eq(plaidItems.userId, userId), eq(mxMembers.userId, userId)))),
+      .where(and(eq(aprs.aprType, 'purchase_apr'), eq(accounts.userId, userId))),
 
     db
       .select({ completedAt: syncLog.completedAt })

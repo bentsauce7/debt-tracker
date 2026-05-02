@@ -39,6 +39,7 @@ export const mxMembers = pgTable('mx_members', {
 
 export const accounts = pgTable('accounts', {
   id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id'),
   itemId: uuid('item_id').references(() => plaidItems.id, { onDelete: 'cascade' }),
   mxMemberId: uuid('mx_member_id').references(() => mxMembers.id, { onDelete: 'cascade' }),
   accountId: text('account_id').notNull().unique(),

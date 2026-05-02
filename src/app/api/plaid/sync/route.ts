@@ -53,6 +53,7 @@ export async function POST() {
           await db
             .insert(accounts)
             .values({
+              userId,
               itemId: item.id,
               accountId: acct.account_id,
               name: acct.name,

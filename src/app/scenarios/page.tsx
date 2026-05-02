@@ -1,13 +1,12 @@
-import { and, eq, or } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { accounts, liabilities, aprs, manualOverrides, plaidItems, mxMembers, promoPurchases } from '@/db/schema';
+import { accounts, liabilities, aprs, manualOverrides, promoPurchases } from '@/db/schema';
 import { ScenarioCalculator, type ScenarioAccount, type PromoDeadline } from '@/components/scenario-calculator';
 
 export default async function ScenariosPage() {
   const { userId } = await auth();
   const today = new Date().toISOString().slice(0, 10);
-  const userFilter = or(eq(plaidItems.userId, userId!), eq(mxMembers.userId, userId!));
 
   const [creditRows, purchaseAprs, specialAprs, overrides, trackedPromos] = await Promise.all([
     db
@@ -18,20 +17,15 @@ export default async function ScenariosPage() {
         minPayment: liabilities.minimumPaymentAmount,
       })
       .from(accounts)
-      .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
-      .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
       .leftJoin(liabilities, eq(liabilities.accountId, accounts.accountId))
-      .where(and(eq(accounts.type, 'credit'), userFilter)),
+      .where(and(eq(accounts.type, 'credit'), eq(accounts.userId, userId!))),
 
     db
       .select({ accountId: aprs.accountId, apr: aprs.aprPercentage })
       .from(aprs)
       .innerJoin(accounts, eq(accounts.accountId, aprs.accountId))
-      .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
-      .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
-      .where(and(eq(aprs.aprType, 'purchase_apr'), userFilter)),
+      .where(and(eq(aprs.aprType, 'purchase_apr'), eq(accounts.userId, userId!))),
 
-    // Special/promo APRs — balance_subject_to_apr is the promotional balance
     db
       .select({
         accountId: aprs.accountId,
@@ -40,9 +34,7 @@ export default async function ScenariosPage() {
       })
       .from(aprs)
       .innerJoin(accounts, eq(accounts.accountId, aprs.accountId))
-      .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
-      .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
-      .where(and(eq(aprs.aprType, 'special'), userFilter)),
+      .where(and(eq(aprs.aprType, 'special'), eq(accounts.userId, userId!))),
 
     db
       .select({
@@ -55,9 +47,7 @@ export default async function ScenariosPage() {
       })
       .from(manualOverrides)
       .innerJoin(accounts, eq(accounts.accountId, manualOverrides.accountId))
-      .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
-      .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
-      .where(userFilter),
+      .where(eq(accounts.userId, userId!)),
 
     db
       .select({
@@ -74,9 +64,7 @@ export default async function ScenariosPage() {
       })
       .from(promoPurchases)
       .innerJoin(accounts, eq(accounts.accountId, promoPurchases.accountId))
-      .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
-      .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
-      .where(userFilter),
+      .where(eq(accounts.userId, userId!)),
   ]);
 
   function feeToMonthlyDollars(p: {

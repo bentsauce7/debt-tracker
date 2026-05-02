@@ -40,6 +40,7 @@ export async function POST() {
         await db
           .insert(accounts)
           .values({
+            userId,
             mxMemberId: member.id,
             accountId: acct.guid,
             name: acct.name,

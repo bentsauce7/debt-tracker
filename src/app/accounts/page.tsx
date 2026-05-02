@@ -1,12 +1,10 @@
-import { and, eq, desc, or } from 'drizzle-orm';
+import { and, eq, desc } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { accounts, liabilities, aprs, plaidItems, mxMembers, manualOverrides } from '@/db/schema';
+import { accounts, liabilities, aprs, plaidItems, manualOverrides } from '@/db/schema';
 import { AccountsTable } from '@/components/accounts-table';
 
 async function getAccounts(userId: string) {
-  const userFilter = or(eq(plaidItems.userId, userId), eq(mxMembers.userId, userId));
-
   const [rows, purchaseAprs] = await Promise.all([
     db
       .select({
@@ -28,19 +26,16 @@ async function getAccounts(userId: string) {
       })
       .from(accounts)
       .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
-      .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
       .leftJoin(liabilities, eq(liabilities.accountId, accounts.accountId))
       .leftJoin(manualOverrides, eq(manualOverrides.accountId, accounts.accountId))
-      .where(userFilter)
+      .where(eq(accounts.userId, userId))
       .orderBy(desc(accounts.currentBalance)),
 
     db
       .select({ accountId: aprs.accountId, aprPercentage: aprs.aprPercentage })
       .from(aprs)
       .innerJoin(accounts, eq(accounts.accountId, aprs.accountId))
-      .leftJoin(plaidItems, eq(plaidItems.id, accounts.itemId))
-      .leftJoin(mxMembers, eq(mxMembers.id, accounts.mxMemberId))
-      .where(and(eq(aprs.aprType, 'purchase_apr'), userFilter)),
+      .where(and(eq(aprs.aprType, 'purchase_apr'), eq(accounts.userId, userId))),
   ]);
 
   const aprMap = new Map(purchaseAprs.map((a) => [a.accountId, a.aprPercentage]));

@@ -104,6 +104,7 @@ export async function POST(request: NextRequest) {
       if (accountsResp.data.accounts.length > 0) {
         await db.insert(accounts).values(
           accountsResp.data.accounts.map((acct) => ({
+            userId: item.userId,
             itemId: item.id,
             accountId: acct.account_id,
             name: acct.name,
