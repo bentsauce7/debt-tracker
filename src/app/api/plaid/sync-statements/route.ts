@@ -36,6 +36,22 @@ export async function POST() {
 
       const accountIds = itemAccounts.map((a) => a.accountId);
 
+      // Diagnostic: log what products this item has consent for
+      try {
+        const itemResp = await plaidClient.itemGet({ access_token: accessToken });
+        console.log('plaid item state', {
+          institution: label,
+          itemId: itemResp.data.item.item_id,
+          products: itemResp.data.item.products,
+          consentedProducts: itemResp.data.item.consented_products,
+          billedProducts: itemResp.data.item.billed_products,
+          consentExpiration: itemResp.data.item.consent_expiration_time,
+          updateType: itemResp.data.item.update_type,
+        });
+      } catch (diagErr) {
+        console.error('plaid itemGet diagnostic failed', { institution: label, err: diagErr });
+      }
+
       // List available statements
       const statementsResp = await plaidClient.statementsList({ access_token: accessToken });
       const plaidAccounts = statementsResp.data.accounts;
