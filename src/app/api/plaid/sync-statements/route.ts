@@ -3,9 +3,14 @@ import { eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
 import { plaidItems, accounts, aprs, statements } from '@/db/schema';
+import { Products } from 'plaid';
 import { plaidClient } from '@/lib/plaid';
 import { decrypt } from '@/lib/crypto';
 import { extractStatement } from '@/lib/extract-statement';
+
+export const maxDuration = 300;
+
+const MAX_STATEMENTS_PER_RUN = 6;
 
 export async function POST() {
   const { userId } = await auth();
@@ -17,14 +22,21 @@ export async function POST() {
     .where(eq(plaidItems.userId, userId));
 
   const results: { institution: string; statementsProcessed: number; errors: string[] }[] = [];
+  let processedThisRun = 0;
+  let hitCap = false;
 
-  for (const item of items) {
+  outer: for (const item of items) {
     const label = item.institutionName ?? item.itemId;
     const itemErrors: string[] = [];
     let statementsProcessed = 0;
 
     try {
       const accessToken = decrypt(item.accessToken);
+
+      // Skip items that haven't been granted Statements consent.
+      const itemResp = await plaidClient.itemGet({ access_token: accessToken });
+      const consented = itemResp.data.item.consented_products ?? [];
+      if (!consented.includes(Products.Statements)) continue;
 
       // Get all credit accounts for this item
       const itemAccounts = await db
@@ -35,22 +47,6 @@ export async function POST() {
       if (itemAccounts.length === 0) continue;
 
       const accountIds = itemAccounts.map((a) => a.accountId);
-
-      // Diagnostic: log what products this item has consent for
-      try {
-        const itemResp = await plaidClient.itemGet({ access_token: accessToken });
-        console.log('plaid item state', {
-          institution: label,
-          itemId: itemResp.data.item.item_id,
-          products: itemResp.data.item.products,
-          consentedProducts: itemResp.data.item.consented_products,
-          billedProducts: itemResp.data.item.billed_products,
-          consentExpiration: itemResp.data.item.consent_expiration_time,
-          updateType: itemResp.data.item.update_type,
-        });
-      } catch (diagErr) {
-        console.error('plaid itemGet diagnostic failed', { institution: label, err: diagErr });
-      }
 
       // List available statements
       const statementsResp = await plaidClient.statementsList({ access_token: accessToken });
@@ -73,6 +69,10 @@ export async function POST() {
         );
 
         for (const stmt of newStatements) {
+          if (processedThisRun >= MAX_STATEMENTS_PER_RUN) {
+            hitCap = true;
+            break;
+          }
           try {
             // Download the PDF
             const dlResp = await plaidClient.statementsDownload(
@@ -120,10 +120,12 @@ export async function POST() {
             }
 
             statementsProcessed++;
+            processedThisRun++;
           } catch (err) {
             itemErrors.push(`${stmt.statement_id}: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
+        if (hitCap) break;
       }
     } catch (err) {
       const plaidData = (err as { response?: { data?: { error_code?: string; error_message?: string } } })?.response?.data;
@@ -135,7 +137,8 @@ export async function POST() {
     }
 
     results.push({ institution: label, statementsProcessed, errors: itemErrors });
+    if (hitCap) break outer;
   }
 
-  return NextResponse.json({ results });
+  return NextResponse.json({ results, done: !hitCap });
 }

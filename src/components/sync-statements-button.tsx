@@ -6,20 +6,48 @@ import { Button } from '@/components/ui/button';
 
 type Result = { institution: string; statementsProcessed: number; errors: string[] };
 
+const MAX_BATCHES = 20;
+
 export function SyncStatementsButton() {
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<Result[] | null>(null);
+  const [batchCount, setBatchCount] = useState(0);
+  const [aggProcessed, setAggProcessed] = useState(0);
+  const [aggErrors, setAggErrors] = useState<{ institution: string; errors: string[] }[]>([]);
+  const [done, setDone] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleClick() {
     setLoading(true);
-    setResults(null);
+    setBatchCount(0);
+    setAggProcessed(0);
+    setAggErrors([]);
+    setDone(null);
     setError(null);
+
     try {
-      const res = await fetch('/api/plaid/sync-statements', { method: 'POST' });
-      if (!res.ok) throw new Error('Failed');
-      const data = await res.json();
-      setResults(data.results);
+      for (let i = 0; i < MAX_BATCHES; i++) {
+        const res = await fetch('/api/plaid/sync-statements', { method: 'POST' });
+        if (!res.ok) throw new Error('Failed');
+        const data: { results: Result[]; done: boolean } = await res.json();
+
+        const batchProcessed = data.results.reduce((s, r) => s + r.statementsProcessed, 0);
+        const batchErrors = data.results
+          .filter((r) => r.errors.length > 0)
+          .map((r) => ({ institution: r.institution, errors: r.errors }));
+
+        setBatchCount((b) => b + 1);
+        setAggProcessed((p) => p + batchProcessed);
+        setAggErrors((e) => [...e, ...batchErrors]);
+
+        if (data.done) {
+          setDone(true);
+          break;
+        }
+        if (batchProcessed === 0) {
+          setDone(true);
+          break;
+        }
+      }
     } catch {
       setError('Failed to sync statements');
     } finally {
@@ -27,8 +55,7 @@ export function SyncStatementsButton() {
     }
   }
 
-  const totalProcessed = results?.reduce((s, r) => s + r.statementsProcessed, 0) ?? 0;
-  const totalErrors = results?.reduce((s, r) => s + r.errors.length, 0) ?? 0;
+  const totalErrors = aggErrors.reduce((s, r) => s + r.errors.length, 0);
 
   return (
     <div className="space-y-3">
@@ -37,16 +64,19 @@ export function SyncStatementsButton() {
       </p>
       <Button variant="outline" className="gap-2" onClick={handleClick} disabled={loading}>
         <FileText className="h-4 w-4" />
-        {loading ? 'Processing statements…' : 'Sync statements'}
+        {loading
+          ? `Processing… (${aggProcessed} done${batchCount > 0 ? `, batch ${batchCount}` : ''})`
+          : 'Sync statements'}
       </Button>
-      {results && (
+      {(loading || done !== null) && (
         <div className="text-sm space-y-1">
           <p className="text-green-700">
-            {totalProcessed} new statement{totalProcessed !== 1 ? 's' : ''} processed
+            {aggProcessed} new statement{aggProcessed !== 1 ? 's' : ''} processed
             {totalErrors > 0 ? ` · ${totalErrors} error${totalErrors !== 1 ? 's' : ''}` : ''}
+            {done === true ? ' · complete' : ''}
           </p>
-          {results.filter((r) => r.errors.length > 0).map((r) => (
-            <div key={r.institution}>
+          {aggErrors.map((r, idx) => (
+            <div key={`${r.institution}-${idx}`}>
               {r.errors.map((e, i) => (
                 <p key={i} className="text-destructive text-xs">{r.institution}: {e}</p>
               ))}
