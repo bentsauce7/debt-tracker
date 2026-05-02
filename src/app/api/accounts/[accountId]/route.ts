@@ -4,12 +4,7 @@ import { z } from 'zod';
 import { db } from '@/db';
 import { manualOverrides } from '@/db/schema';
 import { ownsAccount } from '@/lib/account-auth';
-
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD');
-const numericLike = z.union([z.number(), z.string()]).refine(
-  (v) => Number.isFinite(Number(v)),
-  { message: 'must be a finite number' },
-);
+import { isoDate, numericLike } from '@/lib/validators';
 
 const ManualOverrideSchema = z.object({
   promoExpirationDate: isoDate.nullish(),

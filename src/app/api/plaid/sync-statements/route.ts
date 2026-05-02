@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
 import { plaidItems, accounts, aprs, statements } from '@/db/schema';
 import { Products } from 'plaid';
 import { plaidClient } from '@/lib/plaid';
 import { decrypt } from '@/lib/crypto';
-import { extractStatement } from '@/lib/extract-statement';
+import { extractStatement, type StatementExtraction } from '@/lib/extract-statement';
 
 export const maxDuration = 300;
 
@@ -56,17 +56,31 @@ export async function POST() {
         if (!accountIds.includes(plaidAccount.account_id)) continue;
         const accountId = plaidAccount.account_id;
 
-        // Find statements not yet processed
-        const existingIds = await db
-          .select({ plaidStatementId: statements.plaidStatementId })
+        // Find statements not yet processed; also note the current newest in the DB
+        // so we only refresh APRs when this batch produced a newer extraction.
+        const existing = await db
+          .select({
+            plaidStatementId: statements.plaidStatementId,
+            statementDate: statements.statementDate,
+          })
           .from(statements)
           .where(eq(statements.accountId, accountId));
 
-        const existingSet = new Set(existingIds.map((s) => s.plaidStatementId));
-
-        const newStatements = plaidAccount.statements.filter(
-          (s) => !existingSet.has(s.statement_id),
+        const existingSet = new Set(existing.map((s) => s.plaidStatementId));
+        const currentNewestDate = existing.reduce(
+          (max, s) => (s.statementDate > max ? s.statementDate : max),
+          '0000-00-00',
         );
+
+        const newStatements = plaidAccount.statements
+          .filter((s) => !existingSet.has(s.statement_id))
+          .sort((a, b) => {
+            const ad = `${a.year}-${String(a.month ?? 0).padStart(2, '0')}`;
+            const bd = `${b.year}-${String(b.month ?? 0).padStart(2, '0')}`;
+            return bd.localeCompare(ad);
+          });
+
+        let newestProcessed: { extraction: StatementExtraction; statementDate: string } | null = null;
 
         for (const stmt of newStatements) {
           if (processedThisRun >= MAX_STATEMENTS_PER_RUN) {
@@ -99,24 +113,8 @@ export async function POST() {
               extractedPromoPurchases: extraction.promoPurchases,
             });
 
-            // Update aprs table from the most recent statement
-            if (extraction.aprs.length > 0) {
-              const aprTypeMap: Record<string, string> = {
-                purchase: 'purchase_apr',
-                balance_transfer: 'balance_transfer_apr',
-                cash_advance: 'cash_apr',
-                promotional: 'special',
-              };
-
-              await db.delete(aprs).where(eq(aprs.accountId, accountId));
-              await db.insert(aprs).values(
-                extraction.aprs.map((apr) => ({
-                  accountId,
-                  aprType: aprTypeMap[apr.type] ?? apr.type,
-                  aprPercentage: apr.rate.toString(),
-                  balanceSubjectToApr: apr.balance?.toString() ?? undefined,
-                })),
-              );
+            if (!newestProcessed || statementDate > newestProcessed.statementDate) {
+              newestProcessed = { extraction, statementDate };
             }
 
             statementsProcessed++;
@@ -125,6 +123,35 @@ export async function POST() {
             itemErrors.push(`${stmt.statement_id}: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
+
+        // Refresh APRs once per account, only if this batch processed a statement
+        // newer than what the DB previously held; preserve Plaid-sourced APR types
+        // not present in the extraction.
+        if (
+          newestProcessed
+          && newestProcessed.extraction.aprs.length > 0
+          && newestProcessed.statementDate > currentNewestDate
+        ) {
+          const aprTypeMap: Record<string, string> = {
+            purchase: 'purchase_apr',
+            balance_transfer: 'balance_transfer_apr',
+            cash_advance: 'cash_apr',
+            promotional: 'special',
+          };
+          const mappedRows = newestProcessed.extraction.aprs.map((apr) => ({
+            accountId,
+            aprType: aprTypeMap[apr.type] ?? apr.type,
+            aprPercentage: apr.rate.toString(),
+            balanceSubjectToApr: apr.balance?.toString() ?? undefined,
+          }));
+          const extractedTypes = [...new Set(mappedRows.map((r) => r.aprType))];
+
+          await db.delete(aprs).where(
+            and(eq(aprs.accountId, accountId), inArray(aprs.aprType, extractedTypes)),
+          );
+          await db.insert(aprs).values(mappedRows);
+        }
+
         if (hitCap) break;
       }
     } catch (err) {
