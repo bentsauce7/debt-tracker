@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       user: { client_user_id: userId },
       client_name: 'Debt Tracker',
       access_token: accessToken,
-      additional_consented_products: [Products.Statements],
+      products: [Products.Statements],
       statements: { start_date: fmt(startDate), end_date: fmt(today) },
       country_codes: [CountryCode.Us],
       language: 'en',
