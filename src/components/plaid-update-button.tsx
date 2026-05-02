@@ -21,15 +21,31 @@ export function PlaidUpdateButton({ itemId, label = 'Enable transactions' }: { i
     }
   }, []);
 
-  const onExit = useCallback(() => {
+  const onExit = useCallback((err: { error_code?: string; error_message?: string; display_message?: string } | null) => {
+    if (err) {
+      console.error('Plaid Link exit error:', err);
+      setError(
+        err.display_message ||
+          err.error_message ||
+          err.error_code ||
+          'Plaid Link closed with an error',
+      );
+    }
     setLinkToken(null);
     setLoading(false);
+  }, []);
+
+  const onEvent = useCallback((eventName: string, metadata: unknown) => {
+    if (eventName === 'ERROR' || eventName === 'EXIT' || eventName === 'HANDOFF') {
+      console.log('Plaid event:', eventName, metadata);
+    }
   }, []);
 
   const { open, ready } = usePlaidLink({
     token: linkToken ?? '',
     onSuccess,
     onExit,
+    onEvent,
   });
 
   useEffect(() => {
