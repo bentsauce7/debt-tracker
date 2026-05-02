@@ -59,7 +59,7 @@ export function UploadStatementButton({ accountId, onUploaded }: { accountId: st
         <Upload className="h-4 w-4" />
         {loading ? 'Processing…' : 'Upload statement PDF'}
       </Button>
-      {result && <p className="text-sm text-green-700">{result}</p>}
+      {result && <p className="text-sm text-green-700 dark:text-green-400">{result}</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
     </div>
   );

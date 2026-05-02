@@ -56,7 +56,7 @@ export function SyncButton() {
 
       {result && (
         <div className="rounded-lg border p-4 space-y-2">
-          <div className="flex items-center gap-2 text-sm font-medium text-green-700">
+          <div className="flex items-center gap-2 text-sm font-medium text-green-700 dark:text-green-400">
             <CheckCircle2 className="h-4 w-4" />
             Sync complete
           </div>

@@ -112,10 +112,10 @@ export function PromoPurchaseSuggestions({
   }
 
   return (
-    <Card className="border-amber-200 bg-amber-50/50">
+    <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-950/30">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
-          <Sparkles className="h-4 w-4 text-amber-600" />
+          <Sparkles className="h-4 w-4 text-amber-600 dark:text-amber-400" />
           Detected Promotional Purchases
         </CardTitle>
       </CardHeader>

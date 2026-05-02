@@ -70,7 +70,7 @@ export function SyncStatementsButton() {
       </Button>
       {(loading || done !== null) && (
         <div className="text-sm space-y-1">
-          <p className="text-green-700">
+          <p className="text-green-700 dark:text-green-400">
             {aggProcessed} new statement{aggProcessed !== 1 ? 's' : ''} processed
             {totalErrors > 0 ? ` · ${totalErrors} error${totalErrors !== 1 ? 's' : ''}` : ''}
             {done === true ? ' · complete' : ''}

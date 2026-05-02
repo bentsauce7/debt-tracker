@@ -245,7 +245,7 @@ function StrategyCard({
             <p className="text-xs text-muted-foreground">Payoff in</p>
             <p className="text-2xl font-bold">{formatMonths(result.months)}</p>
             {monthsSaved > 0 && (
-              <p className="text-xs text-green-600">{formatMonths(monthsSaved)} sooner</p>
+              <p className="text-xs text-green-600 dark:text-green-400">{formatMonths(monthsSaved)} sooner</p>
             )}
           </div>
           <div>
@@ -257,7 +257,7 @@ function StrategyCard({
               </p>
             )}
             {costSaved > 0 && (
-              <p className="text-xs text-green-600">{formatCurrency(costSaved)} saved</p>
+              <p className="text-xs text-green-600 dark:text-green-400">{formatCurrency(costSaved)} saved</p>
             )}
           </div>
         </div>
@@ -274,7 +274,7 @@ function StrategyCard({
                     <span className="font-medium truncate max-w-[160px]">{acct.name}</span>
                     {acct.deferredInterestHit && (
                       <span title="Deferred interest was charged">
-                        <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
+                        <AlertTriangle className="h-3 w-3 text-amber-500 dark:text-amber-400 shrink-0" />
                       </span>
                     )}
                   </span>
@@ -361,13 +361,13 @@ export function ScenarioCalculator({
 
       {/* Promo Deadlines panel — deferred-interest purchases (retroactive interest risk) */}
       {visibleDeferred.length > 0 && (
-        <Card className="border-amber-200 bg-amber-50/50">
+        <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-950/30">
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base text-amber-800">
+            <CardTitle className="flex items-center gap-2 text-base text-amber-800 dark:text-amber-200">
               <Clock className="h-4 w-4" />
               Promo Deadlines
               {totalDeferredAtRisk > 0 && (
-                <span className="ml-auto text-sm font-normal text-amber-700">
+                <span className="ml-auto text-sm font-normal text-amber-700 dark:text-amber-300">
                   {formatCurrency(totalDeferredAtRisk)} total at risk
                 </span>
               )}
@@ -376,7 +376,7 @@ export function ScenarioCalculator({
           <CardContent>
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-amber-700 border-b border-amber-200">
+                <tr className="text-xs text-amber-700 dark:text-amber-300 border-b border-amber-200 dark:border-amber-900/40">
                   <th className="text-left pb-2 font-medium">Purchase</th>
                   <th className="text-right pb-2 font-medium">Balance</th>
                   <th className="text-right pb-2 font-medium">Interest at risk</th>
@@ -392,7 +392,7 @@ export function ScenarioCalculator({
                   return (
                     <tr
                       key={`${d.accountId}-${d.promoEndDate}-${i}`}
-                      className={urgent ? 'text-red-700' : 'text-amber-900'}
+                      className={urgent ? 'text-red-700 dark:text-red-300' : 'text-amber-900 dark:text-amber-100'}
                     >
                       <td className="py-2 font-medium">
                         <div>{d.accountName}</div>
@@ -419,7 +419,7 @@ export function ScenarioCalculator({
                 })}
               </tbody>
             </table>
-            <p className="text-xs text-amber-700 mt-3">
+            <p className="text-xs text-amber-700 dark:text-amber-300 mt-3">
               Each row is a single deferred-interest purchase. Pay at least the required monthly amount on each before its deadline to avoid having all accrued interest charged retroactively.
               {hiddenDeferredCount > 0 &&
                 ` ${hiddenDeferredCount} additional deferred ${hiddenDeferredCount === 1 ? 'deadline is' : 'deadlines are'} more than a month away and not shown here.`}
@@ -430,9 +430,9 @@ export function ScenarioCalculator({
 
       {/* Plan Deadlines panel — installment / pay-over-time plans (no retroactive interest, but plan ends) */}
       {visiblePlans.length > 0 && (
-        <Card className="border-blue-200 bg-blue-50/50">
+        <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-900/40 dark:bg-blue-950/30">
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base text-blue-800">
+            <CardTitle className="flex items-center gap-2 text-base text-blue-800 dark:text-blue-200">
               <Clock className="h-4 w-4" />
               Plan Deadlines
             </CardTitle>
@@ -440,7 +440,7 @@ export function ScenarioCalculator({
           <CardContent>
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-blue-700 border-b border-blue-200">
+                <tr className="text-xs text-blue-700 dark:text-blue-300 border-b border-blue-200 dark:border-blue-900/40">
                   <th className="text-left pb-2 font-medium">Plan</th>
                   <th className="text-right pb-2 font-medium">Balance</th>
                   <th className="text-right pb-2 font-medium">Monthly fee</th>
@@ -453,7 +453,7 @@ export function ScenarioCalculator({
                   const months = d.expiresMonths;
                   const required = months > 0 ? d.balance / months : d.balance;
                   return (
-                    <tr key={`${d.accountId}-${d.promoEndDate}-${i}`} className="text-blue-900">
+                    <tr key={`${d.accountId}-${d.promoEndDate}-${i}`} className="text-blue-900 dark:text-blue-100">
                       <td className="py-2 font-medium">
                         <div>{d.accountName}</div>
                         <div className="text-xs font-normal opacity-80 truncate max-w-[280px]">
@@ -479,7 +479,7 @@ export function ScenarioCalculator({
                 })}
               </tbody>
             </table>
-            <p className="text-xs text-blue-700 mt-3">
+            <p className="text-xs text-blue-700 dark:text-blue-300 mt-3">
               Installment / pay-over-time plans. After the plan end date, any remaining balance rolls into the regular purchase APR — no retroactive interest charge.
               {hiddenPlanCount > 0 &&
                 ` ${hiddenPlanCount} additional plan ${hiddenPlanCount === 1 ? 'deadline is' : 'deadlines are'} more than a month away and not shown here.`}
@@ -547,7 +547,7 @@ export function ScenarioCalculator({
                   <td className="py-2 font-medium">
                     <div>{acct.name}</div>
                     {acct.promoExpiresMonths !== undefined && (
-                      <div className="text-xs text-amber-600">
+                      <div className="text-xs text-amber-600 dark:text-amber-400">
                         {acct.isDeferredInterest ? 'Deferred interest' : 'Promo rate'} ·{' '}
                         {acct.promoExpiresMonths === 0
                           ? 'expires this month'
@@ -580,7 +580,7 @@ export function ScenarioCalculator({
           estimated minimums (2% of balance) and 0% APR if liability data is unavailable.
         </p>
         {promoAccounts.length > 0 && (
-          <p className="text-xs text-amber-600 flex items-start gap-1.5">
+          <p className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1.5">
             <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             Deferred interest accounts that are not paid off before their promo expires will have all
             accrued interest added to the balance at that point.

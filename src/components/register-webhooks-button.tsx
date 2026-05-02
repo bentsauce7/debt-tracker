@@ -34,7 +34,7 @@ export function RegisterWebhooksButton() {
         {loading ? 'Registering…' : 'Register webhooks'}
       </Button>
       {result && (
-        <p className="text-sm text-green-700">
+        <p className="text-sm text-green-700 dark:text-green-400">
           Registered on {result.updated.length} institution{result.updated.length !== 1 ? 's' : ''}
           {result.failed > 0 ? ` · ${result.failed} failed` : ''}.
         </p>

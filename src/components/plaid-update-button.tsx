@@ -71,7 +71,7 @@ export function PlaidUpdateButton({ itemId, label = 'Enable transactions' }: { i
     }
   }
 
-  if (done) return <span className="text-xs text-green-700">Updated — sync complete</span>;
+  if (done) return <span className="text-xs text-green-700 dark:text-green-400">Updated — sync complete</span>;
 
   return (
     <div className="flex items-center gap-2">
