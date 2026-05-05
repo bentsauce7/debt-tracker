@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import { and, eq, desc } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
@@ -48,7 +49,8 @@ async function getAccounts(userId: string) {
 
 export default async function AccountsPage() {
   const { userId } = await auth();
-  const rows = await getAccounts(userId!);
+  if (!userId) redirect('/sign-in');
+  const rows = await getAccounts(userId);
 
   const totalBalance = rows.reduce((sum, r) => sum + parseFloat(r.currentBalance ?? '0'), 0);
   const creditRows = rows.filter((r) => r.type === 'credit');

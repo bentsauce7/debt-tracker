@@ -9,6 +9,9 @@ export const isoDate = z
   }, 'must be a valid calendar date');
 
 export const numericLike = z.union([z.number(), z.string()]).refine(
-  (v) => Number.isFinite(Number(v)) && Number(v) >= 0,
-  { message: 'must be a non-negative finite number' },
+  (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 && n < 100_000_000;
+  },
+  { message: 'must be a non-negative finite number under 100,000,000' },
 );

@@ -23,8 +23,9 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ item
   try {
     const accessToken = decrypt(item.accessToken);
     await plaidClient.itemRemove({ access_token: accessToken });
-  } catch {
+  } catch (err) {
     // Proceed with DB deletion even if Plaid revocation fails (token may already be invalid)
+    console.error(`Failed to revoke Plaid item ${itemId}:`, err instanceof Error ? err.message : err);
   }
 
   await db.delete(plaidItems).where(eq(plaidItems.id, itemId));

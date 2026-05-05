@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { and, desc, eq } from 'drizzle-orm';
 import Link from 'next/link';
 import { auth } from '@clerk/nextjs/server';
@@ -56,7 +56,8 @@ const APR_TYPE_LABELS: Record<string, string> = {
 export default async function AccountDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { userId } = await auth();
-  const data = await getAccount(id, userId!);
+  if (!userId) redirect('/sign-in');
+  const data = await getAccount(id, userId);
 
   if (!data) notFound();
 

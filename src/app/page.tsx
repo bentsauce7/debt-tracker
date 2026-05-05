@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { and, eq, desc } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
@@ -81,7 +82,8 @@ async function getDashboardMetrics(userId: string) {
 
 export default async function DashboardPage() {
   const { userId } = await auth();
-  const data = await getDashboardMetrics(userId!);
+  if (!userId) redirect('/sign-in');
+  const data = await getDashboardMetrics(userId);
   const hasFlags = data.pastDueCount > 0 || data.overLimitCount > 0;
 
   return (

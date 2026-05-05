@@ -44,6 +44,6 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     const plaidError = (err as { response?: { data?: unknown } })?.response?.data;
     console.error('update-link-token error:', plaidError ?? err);
-    return NextResponse.json({ error: 'Failed to create update token', detail: plaidError }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to create update token' }, { status: 500 });
   }
 }

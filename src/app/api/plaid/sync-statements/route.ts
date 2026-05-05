@@ -69,7 +69,7 @@ export async function POST() {
         const existingSet = new Set(existing.map((s) => s.plaidStatementId));
         const currentNewestDate = existing.reduce(
           (max, s) => (s.statementDate > max ? s.statementDate : max),
-          '0000-00-00',
+          '1900-01-01',
         );
 
         const newStatements = plaidAccount.statements
@@ -146,10 +146,12 @@ export async function POST() {
           }));
           const extractedTypes = [...new Set(mappedRows.map((r) => r.aprType))];
 
-          await db.delete(aprs).where(
-            and(eq(aprs.accountId, accountId), inArray(aprs.aprType, extractedTypes)),
-          );
-          await db.insert(aprs).values(mappedRows);
+          await db.batch([
+            db.delete(aprs).where(
+              and(eq(aprs.accountId, accountId), inArray(aprs.aprType, extractedTypes)),
+            ),
+            db.insert(aprs).values(mappedRows),
+          ]);
         }
 
         if (hitCap) break;

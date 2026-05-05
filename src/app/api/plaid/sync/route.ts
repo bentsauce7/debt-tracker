@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
 import { plaidItems, accounts, liabilities, aprs, transactions, syncLog } from '@/db/schema';
@@ -49,26 +49,14 @@ export async function POST() {
         const plaidAccounts = accountsResp.data.accounts;
         const creditLiabilities = liabilitiesResp.data.liabilities.credit ?? [];
 
-        for (const acct of plaidAccounts) {
+        if (plaidAccounts.length > 0) {
           await db
             .insert(accounts)
-            .values({
-              userId,
-              itemId: item.id,
-              accountId: acct.account_id,
-              name: acct.name,
-              mask: acct.mask ?? undefined,
-              officialName: acct.official_name ?? undefined,
-              type: acct.type,
-              subtype: acct.subtype ?? undefined,
-              currentBalance: acct.balances.current?.toString() ?? undefined,
-              availableBalance: acct.balances.available?.toString() ?? undefined,
-              creditLimit: acct.balances.limit?.toString() ?? undefined,
-              lastSyncedAt: new Date(),
-            })
-            .onConflictDoUpdate({
-              target: accounts.accountId,
-              set: {
+            .values(
+              plaidAccounts.map((acct) => ({
+                userId,
+                itemId: item.id,
+                accountId: acct.account_id,
                 name: acct.name,
                 mask: acct.mask ?? undefined,
                 officialName: acct.official_name ?? undefined,
@@ -78,54 +66,62 @@ export async function POST() {
                 availableBalance: acct.balances.available?.toString() ?? undefined,
                 creditLimit: acct.balances.limit?.toString() ?? undefined,
                 lastSyncedAt: new Date(),
+              })),
+            )
+            .onConflictDoUpdate({
+              target: accounts.accountId,
+              set: {
+                name: sql`excluded.name`,
+                mask: sql`excluded.mask`,
+                officialName: sql`excluded.official_name`,
+                type: sql`excluded.type`,
+                subtype: sql`excluded.subtype`,
+                currentBalance: sql`excluded.current_balance`,
+                availableBalance: sql`excluded.available_balance`,
+                creditLimit: sql`excluded.credit_limit`,
+                lastSyncedAt: sql`excluded.last_synced_at`,
               },
             });
-          accountsUpdated++;
+          accountsUpdated += plaidAccounts.length;
         }
 
         for (const credit of creditLiabilities) {
           if (!credit.account_id) continue;
           const accountId = credit.account_id;
-          await db
-            .insert(liabilities)
-            .values({
-              accountId,
-              lastStatementBalance: credit.last_statement_balance?.toString() ?? undefined,
-              lastStatementIssueDate: credit.last_statement_issue_date ?? undefined,
-              minimumPaymentAmount: credit.minimum_payment_amount?.toString() ?? undefined,
-              nextPaymentDueDate: credit.next_payment_due_date ?? undefined,
-              lastPaymentAmount: credit.last_payment_amount?.toString() ?? undefined,
-              lastPaymentDate: credit.last_payment_date ?? undefined,
-            })
-            .onConflictDoUpdate({
-              target: liabilities.accountId,
-              set: {
-                lastStatementBalance: credit.last_statement_balance?.toString() ?? undefined,
-                lastStatementIssueDate: credit.last_statement_issue_date ?? undefined,
-                minimumPaymentAmount: credit.minimum_payment_amount?.toString() ?? undefined,
-                nextPaymentDueDate: credit.next_payment_due_date ?? undefined,
-                lastPaymentAmount: credit.last_payment_amount?.toString() ?? undefined,
-                lastPaymentDate: credit.last_payment_date ?? undefined,
-              },
-            });
 
-          await db
+          const liabilityValues = {
+            accountId,
+            lastStatementBalance: credit.last_statement_balance?.toString() ?? undefined,
+            lastStatementIssueDate: credit.last_statement_issue_date ?? undefined,
+            minimumPaymentAmount: credit.minimum_payment_amount?.toString() ?? undefined,
+            nextPaymentDueDate: credit.next_payment_due_date ?? undefined,
+            lastPaymentAmount: credit.last_payment_amount?.toString() ?? undefined,
+            lastPaymentDate: credit.last_payment_date ?? undefined,
+          };
+
+          const liabilityUpsert = db
+            .insert(liabilities)
+            .values(liabilityValues)
+            .onConflictDoUpdate({ target: liabilities.accountId, set: liabilityValues });
+          const overdueUpdate = db
             .update(accounts)
             .set({ isOverdue: credit.is_overdue ?? false })
             .where(eq(accounts.accountId, accountId));
-
-          await db.delete(aprs).where(eq(aprs.accountId, accountId));
+          const aprDelete = db.delete(aprs).where(eq(aprs.accountId, accountId));
 
           if (credit.aprs && credit.aprs.length > 0) {
-            await db.insert(aprs).values(
+            const aprInsert = db.insert(aprs).values(
               credit.aprs.map((apr) => ({
-                accountId: accountId,
+                accountId,
                 aprPercentage: apr.apr_percentage?.toString() ?? undefined,
                 aprType: apr.apr_type,
                 balanceSubjectToApr: apr.balance_subject_to_apr?.toString() ?? undefined,
                 interestChargeAmount: apr.interest_charge_amount?.toString() ?? undefined,
               })),
             );
+            await db.batch([liabilityUpsert, overdueUpdate, aprDelete, aprInsert]);
+          } else {
+            await db.batch([liabilityUpsert, overdueUpdate, aprDelete]);
           }
         }
 
@@ -165,21 +161,32 @@ export async function POST() {
             }
 
             if (modified.length > 0) {
-              for (const tx of modified) {
-                await db.update(transactions).set({
+              await db.insert(transactions).values(
+                modified.map((tx) => ({
+                  accountId: tx.account_id,
+                  transactionId: tx.transaction_id,
                   name: tx.name,
                   merchantName: tx.merchant_name ?? undefined,
                   amount: tx.amount.toString(),
                   date: tx.date,
                   pending: tx.pending,
-                }).where(eq(transactions.transactionId, tx.transaction_id));
-              }
+                })),
+              ).onConflictDoUpdate({
+                target: transactions.transactionId,
+                set: {
+                  name: sql`excluded.name`,
+                  merchantName: sql`excluded.merchant_name`,
+                  amount: sql`excluded.amount`,
+                  date: sql`excluded.date`,
+                  pending: sql`excluded.pending`,
+                },
+              });
             }
 
             if (removed.length > 0) {
-              for (const tx of removed) {
-                await db.delete(transactions).where(eq(transactions.transactionId, tx.transaction_id));
-              }
+              await db.delete(transactions).where(
+                inArray(transactions.transactionId, removed.map((r) => r.transaction_id)),
+              );
             }
 
             cursor = next_cursor;

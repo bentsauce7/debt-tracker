@@ -171,6 +171,10 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  if (webhook_type === 'STATEMENTS' && webhook_code === 'STATEMENTS_REFRESH_AVAILABLE') {
+    console.log('plaid webhook STATEMENTS_REFRESH_AVAILABLE', { itemId: item_id, institutionName: item.institutionName });
+  }
+
   if (webhook_type === 'ITEM' && webhook_code === 'ERROR' && body.error?.error_code === 'ITEM_LOGIN_REQUIRED') {
     await db.update(plaidItems)
       .set({ needsReauth: true, updatedAt: new Date() })

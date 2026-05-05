@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import { and, eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/db';
@@ -6,6 +7,7 @@ import { ScenarioCalculator, type ScenarioAccount, type PromoDeadline } from '@/
 
 export default async function ScenariosPage() {
   const { userId } = await auth();
+  if (!userId) redirect('/sign-in');
   const today = new Date().toISOString().slice(0, 10);
 
   const [creditRows, purchaseAprs, specialAprs, overrides, trackedPromos] = await Promise.all([
@@ -18,13 +20,13 @@ export default async function ScenariosPage() {
       })
       .from(accounts)
       .leftJoin(liabilities, eq(liabilities.accountId, accounts.accountId))
-      .where(and(eq(accounts.type, 'credit'), eq(accounts.userId, userId!))),
+      .where(and(eq(accounts.type, 'credit'), eq(accounts.userId, userId))),
 
     db
       .select({ accountId: aprs.accountId, apr: aprs.aprPercentage })
       .from(aprs)
       .innerJoin(accounts, eq(accounts.accountId, aprs.accountId))
-      .where(and(eq(aprs.aprType, 'purchase_apr'), eq(accounts.userId, userId!))),
+      .where(and(eq(aprs.aprType, 'purchase_apr'), eq(accounts.userId, userId))),
 
     db
       .select({
@@ -34,7 +36,7 @@ export default async function ScenariosPage() {
       })
       .from(aprs)
       .innerJoin(accounts, eq(accounts.accountId, aprs.accountId))
-      .where(and(eq(aprs.aprType, 'special'), eq(accounts.userId, userId!))),
+      .where(and(eq(aprs.aprType, 'special'), eq(accounts.userId, userId))),
 
     db
       .select({
@@ -47,7 +49,7 @@ export default async function ScenariosPage() {
       })
       .from(manualOverrides)
       .innerJoin(accounts, eq(accounts.accountId, manualOverrides.accountId))
-      .where(eq(accounts.userId, userId!)),
+      .where(eq(accounts.userId, userId)),
 
     db
       .select({
@@ -64,7 +66,7 @@ export default async function ScenariosPage() {
       })
       .from(promoPurchases)
       .innerJoin(accounts, eq(accounts.accountId, promoPurchases.accountId))
-      .where(eq(accounts.userId, userId!)),
+      .where(eq(accounts.userId, userId)),
   ]);
 
   function feeToMonthlyDollars(p: {
@@ -78,6 +80,7 @@ export default async function ScenariosPage() {
     const fee = parseFloat(p.feeAmount);
     if (!Number.isFinite(fee)) return 0;
     const principal = parseFloat(p.purchaseAmount);
+    if (!Number.isFinite(principal)) return 0;
     const baseFee = p.feeType === 'percentage' ? (fee / 100) * principal : fee;
     switch (p.feeFrequency) {
       case 'monthly':
